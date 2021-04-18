@@ -8,8 +8,11 @@ option(SpiderDB_TESTING "Enable testing targets" ON)
 
 add_subdirectory(modules)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/modules/seastar/include)
+
 set(SPIDERDB_HEADERS
     "include/spiderdb/core/spiderdb.h"
+    "include/spiderdb/util/string.h"
 )
 set(SPIDERDB_SOURCES
     "src/core/spiderdb.cpp"
