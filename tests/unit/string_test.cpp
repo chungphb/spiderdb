@@ -80,8 +80,8 @@ SPIDERDB_TEST_CASE(test_empty_string) {
         try {
             spiderdb::string str{data, len};
             SPIDERDB_REQUIRE(false);
-        } catch (std::runtime_error& error) {
-            SPIDERDB_CHECK(strcmp(error.what(), "Non-zero length empty string") == 0);
+        } catch (std::runtime_error& err) {
+            SPIDERDB_CHECK(strcmp(err.what(), "Non-zero length empty string") == 0);
         }
     }
     return seastar::now();
@@ -101,9 +101,7 @@ SPIDERDB_TEST_CASE(test_copy_string) {
         SPIDERDB_CHECK(str1 == str2);
     }
     { // Test copy an empty string
-        const char* data = nullptr;
-        const size_t len = 0;
-        spiderdb::string str1{data, len};
+        spiderdb::string str1;
         spiderdb::string str2 = str1;
         SPIDERDB_CHECK(str1.empty() && str2.empty());
     }
@@ -111,24 +109,127 @@ SPIDERDB_TEST_CASE(test_copy_string) {
 }
 
 SPIDERDB_TEST_CASE(test_move_string) {
-    { // Test copy constructor
+    { // Test move constructor
         spiderdb::string str1{"String"};
         spiderdb::string str2{std::move(str1)};
         SPIDERDB_CHECK(strcmp(str2.c_str(), "String") == 0);
         SPIDERDB_CHECK(str1.empty());
     }
-    { // Test copy assignment operator
+    { // Test move assignment operator
         spiderdb::string str1{"String"};
         spiderdb::string str2 = std::move(str1);
         SPIDERDB_CHECK(strcmp(str2.c_str(), "String") == 0);
         SPIDERDB_CHECK(str1.empty());
     }
-    { // Test copy an empty string
-        const char* data = nullptr;
-        const size_t len = 0;
-        spiderdb::string str1{data, len};
+    { // Test move an empty string
+        spiderdb::string str1;
         spiderdb::string str2 = std::move(str1);
         SPIDERDB_CHECK(str1.empty() && str2.empty());
+    }
+    return seastar::now();
+}
+
+SPIDERDB_TEST_CASE(test_access_string) {
+    { // Test access a string
+        spiderdb::string str{"String"};
+        SPIDERDB_CHECK(str[0] == 'S');
+        SPIDERDB_CHECK(str[1] == 't');
+        SPIDERDB_CHECK(str[2] == 'r');
+        SPIDERDB_CHECK(str[3] == 'i');
+        SPIDERDB_CHECK(str[4] == 'n');
+        SPIDERDB_CHECK(str[5] == 'g');
+        try {
+            auto& c = str[6];
+            SPIDERDB_REQUIRE(false);
+        } catch (std::runtime_error& err) {
+            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access") == 0);
+        }
+        try {
+            auto& c = str[-1];
+            SPIDERDB_REQUIRE(false);
+        } catch (std::runtime_error& err) {
+            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access") == 0);
+        }
+    }
+    { // Test update a string
+        spiderdb::string str{"String"};
+        str[3] = 'o';
+        SPIDERDB_CHECK(strcmp(str.c_str(), "Strong") == 0);
+        try {
+            str[6] = '0';
+            SPIDERDB_REQUIRE(false);
+        } catch (std::runtime_error& err) {
+            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access") == 0);
+        }
+    }
+    { // Test access an empty string
+        spiderdb::string str;
+        try {
+            auto& c = str[0];
+            SPIDERDB_REQUIRE(false);
+        } catch (std::runtime_error& err) {
+            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access") == 0);
+        }
+    }
+    return seastar::now();
+}
+
+SPIDERDB_TEST_CASE(test_compare_string) {
+    { // Test compare two strings
+        spiderdb::string str1{"String"};
+        spiderdb::string str2{"String"};
+        spiderdb::string str3{"Strong"};
+        spiderdb::string str4{"String String"};
+
+        SPIDERDB_CHECK(str1 == str1);
+        SPIDERDB_CHECK(!(str1 != str1));
+        SPIDERDB_CHECK(!(str1 < str1));
+        SPIDERDB_CHECK(str1 >= str1);
+        SPIDERDB_CHECK(!(str1 > str1));
+        SPIDERDB_CHECK(str1 <= str1);
+
+        SPIDERDB_CHECK(str1 == str2);
+        SPIDERDB_CHECK(!(str1 != str2));
+        SPIDERDB_CHECK(!(str1 < str2));
+        SPIDERDB_CHECK(str1 >= str2);
+        SPIDERDB_CHECK(!(str1 > str2));
+        SPIDERDB_CHECK(str1 <= str2);
+
+        SPIDERDB_CHECK(!(str1 == str3));
+        SPIDERDB_CHECK(str1 != str3);
+        SPIDERDB_CHECK(str1 < str3);
+        SPIDERDB_CHECK(!(str1 >= str3));
+        SPIDERDB_CHECK(!(str1 > str3));
+        SPIDERDB_CHECK(str1 <= str3);
+
+        SPIDERDB_CHECK(!(str1 == str4));
+        SPIDERDB_CHECK(str1 != str4);
+        SPIDERDB_CHECK(str1 < str4);
+        SPIDERDB_CHECK(!(str1 >= str4));
+        SPIDERDB_CHECK(!(str1 > str4));
+        SPIDERDB_CHECK(str1 <= str4);
+    }
+    { // Test compare an empty string with a regular string
+        spiderdb::string str1;
+        spiderdb::string str2{"String"};
+
+        SPIDERDB_CHECK(!(str1 == str2));
+        SPIDERDB_CHECK(str1 != str2);
+        SPIDERDB_CHECK(str1 < str2);
+        SPIDERDB_CHECK(!(str1 >= str2));
+        SPIDERDB_CHECK(!(str1 > str2));
+        SPIDERDB_CHECK(str1 <= str2);
+    }
+    { // Test compare two empty strings
+        spiderdb::string str1;
+        spiderdb::string str2;
+
+        SPIDERDB_CHECK(str1 == str2);
+        SPIDERDB_CHECK(!(str1 != str2));
+        SPIDERDB_CHECK(!(str1 < str2));
+        SPIDERDB_CHECK(str1 >= str2);
+        SPIDERDB_CHECK(!(str1 > str2));
+        SPIDERDB_CHECK(str1 <= str2);
     }
     return seastar::now();
 }
