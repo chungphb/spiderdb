@@ -25,7 +25,8 @@ set(SPIDERDB_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/testing/test_runner.cpp
 )
 set(SPIDERDB_TESTS
-    test_spiderdb.cpp
+    ${CMAKE_SOURCE_DIR}/tests/sample_test.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/string_test.cpp
 )
 add_executable(spiderdb_test
     ${SEASTAR_TEST_HEADERS}

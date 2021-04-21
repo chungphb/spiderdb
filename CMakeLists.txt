@@ -22,5 +22,5 @@ target_include_directories(spiderdb PUBLIC include)
 target_link_directories(spiderdb PRIVATE seastar)
 
 if (SpiderDB_TESTING)
-    add_subdirectory(test)
+    add_subdirectory(tests)
 endif()

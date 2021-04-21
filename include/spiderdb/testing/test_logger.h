@@ -8,13 +8,13 @@
 
 #define SPIDERDB_START_TEST_CASE() \
 do { \
-    auto message = fmt::format("START TEST CASE  {}", get_name()); \
+    auto message = fmt::format(">>>> START TEST CASE  {}", get_name()); \
     BOOST_TEST_MESSAGE(message); \
 } while (false)
 
 #define SPIDERDB_FINISH_TEST_CASE() \
 do { \
-    auto message = fmt::format("FINISH TEST CASE {}\n", get_name()); \
+    auto message = fmt::format(">>>> FINISH TEST CASE {}\n", get_name()); \
     BOOST_TEST_MESSAGE(message); \
 } while (false)
 
