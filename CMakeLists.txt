@@ -19,7 +19,7 @@ set(SPIDERDB_SOURCES
 )
 add_library(spiderdb STATIC ${SPIDERDB_HEADERS} ${SPIDERDB_SOURCES})
 target_include_directories(spiderdb PUBLIC include)
-target_link_directories(spiderdb PUBLIC seastar)
+target_link_directories(spiderdb PRIVATE seastar)
 
 if (SpiderDB_TESTING)
     add_subdirectory(test)
