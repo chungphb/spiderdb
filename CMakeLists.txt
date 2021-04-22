@@ -13,6 +13,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/modules/seastar/include)
 set(SPIDERDB_HEADERS
     "include/spiderdb/core/spiderdb.h"
     "include/spiderdb/util/string.h"
+    "include/spiderdb/util/cache.h"
 )
 set(SPIDERDB_SOURCES
     "src/core/spiderdb.cpp"
