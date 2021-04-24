@@ -15,7 +15,7 @@ namespace spiderdb {
 template <typename key_t, typename value_t>
 struct cache {
     using key_value_pair_t = std::pair<key_t, value_t>;
-    using list_iterator_t = std::list<pair_t>::iterator;
+    using list_iterator_t = typename std::list<key_value_pair_t>::iterator;
     using evictor_t = std::function<seastar::future<>(const key_value_pair_t&)>;
 
 public:
@@ -27,7 +27,7 @@ public:
 
     seastar::future<> put(key_t key, value_t value) {
         return seastar::with_lock(_lock, [this, key{std::forward<key_t>(key)}, value{std::forward<key_t>(value)}] {
-            _items.push_front({key, std::forward<key_t>(value)});
+            _items.push_front({key, value});
             auto iterator_it = _iterators.find(key);
             if (iterator_it != _iterators.end()) {
                 _items.erase(iterator_it->second);
@@ -62,8 +62,14 @@ public:
 
     seastar::future<> clear() noexcept {
         return seastar::with_lock(_lock, [this] {
-            _iterators.clear();
-            _items.clear();
+            return seastar::do_until([this] {
+                return _items.size() == 0;
+            }, [this] {
+                return _evictor(_items.back()).then([this] {
+                    _iterators.erase(_items.back().first);
+                    _items.pop_back();
+                });
+            });
         });
     }
 
@@ -73,6 +79,10 @@ public:
 
     size_t capacity() const noexcept {
         return _capacity;
+    }
+
+    bool empty() const noexcept {
+        return _items.empty();
     }
 
 private:
