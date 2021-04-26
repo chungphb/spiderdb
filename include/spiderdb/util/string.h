@@ -12,15 +12,14 @@ namespace spiderdb {
 
 template <typename char_t>
 struct basic_string {
-
-static_assert(
-    std::is_same_v<char_t, char> ||
-    std::is_same_v<char_t, unsigned char> ||
-    std::is_same_v<char_t, signed char> ||
-    std::is_same_v<char_t, uint8_t> ||
-    std::is_same_v<char_t, int8_t>,
-    "Not supported"
-);
+    static_assert(
+        std::is_same_v<char_t, char> ||
+        std::is_same_v<char_t, unsigned char> ||
+        std::is_same_v<char_t, signed char> ||
+        std::is_same_v<char_t, uint8_t> ||
+        std::is_same_v<char_t, int8_t>,
+        "Not supported"
+    );
 
 public:
     basic_string() = default;

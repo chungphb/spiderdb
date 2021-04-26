@@ -174,7 +174,7 @@ SPIDERDB_TEST_CASE(test_access_string) {
     return seastar::now();
 }
 
-SPIDERDB_TEST_CASE(test_compare_string) {
+SPIDERDB_TEST_CASE(test_compare_strings) {
     { // Test compare two strings
         spiderdb::string str1{"String"};
         spiderdb::string str2{"String"};
@@ -209,7 +209,7 @@ SPIDERDB_TEST_CASE(test_compare_string) {
         SPIDERDB_CHECK(!(str1 > str4));
         SPIDERDB_CHECK(str1 <= str4);
     }
-    { // Test compare an empty string with a regular string
+    { // Test compare an empty string to a regular string
         spiderdb::string str1;
         spiderdb::string str2{"String"};
 
