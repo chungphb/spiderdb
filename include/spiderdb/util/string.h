@@ -35,7 +35,7 @@ public:
         if (!_data) {
             throw std::bad_alloc();
         }
-        std::memcpy(_data, data, len);
+        memcpy(_data, data, len);
         _len = len;
     }
 
@@ -50,7 +50,16 @@ public:
         if (!_data) {
             throw std::bad_alloc();
         }
-        std::memcpy(_data, data, len);
+        memcpy(_data, data, len);
+        _len = len;
+    }
+
+    basic_string(size_t len, char_t c) {
+        _data = static_cast<char_t*>(std::malloc(sizeof(char_t) * len));
+        if (!_data) {
+            throw std::bad_alloc();
+        }
+        memset(_data, c, len);
         _len = len;
     }
 
