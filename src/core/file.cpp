@@ -3,6 +3,7 @@
 //
 
 #include <spiderdb/core/file.h>
+#include <spiderdb/util/log.h>
 #include <seastar/core/seastar.hh>
 
 namespace spiderdb {
@@ -77,10 +78,10 @@ seastar::future<> file_impl::open() {
         return seastar::open_file_dma(_name, seastar::open_flags::create | seastar::open_flags::rw).then([this, exists](auto file) {
             _file = file;
             if (exists) {
-                fmt::print("Opened file: {}", _name);
+                SPIDERDB_LOGGER_INFO("Opened file: {}", _name);
                 return _header.load(file);
             } else {
-                fmt::print("Created file: {}", _name);
+                SPIDERDB_LOGGER_INFO("Created file: {}", _name);
                 return _header.flush(file);
             }
         }).then([this] {
@@ -98,7 +99,7 @@ seastar::future<> file_impl::close() {
         auto file = std::move(_file);
         return file.close().finally([this] {
             _open = false;
-            fmt::print("Closed file: {}", _name);
+            SPIDERDB_LOGGER_INFO("Closed file: {}", _name);
         });
     });
 }
@@ -114,11 +115,11 @@ seastar::future<string> file_impl::read() {
 }
 
 void file_impl::log() const noexcept {
-    fmt::print("\t{:<20}|{:>20}", "FILE", _name);
-    fmt::print("\t{:<20}|{:>20}", "Page size", _header._page_size);
-    fmt::print("\t{:<20}|{:>20}", "Page count", _header._page_count);
-    fmt::print("\t{:<20}|{:>20}", "First free page", _header._first_free_page);
-    fmt::print("\t{:<20}|{:>20}", "Last free page", _header._last_free_page);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "FILE", _name);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Page size", _header._page_size);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Page count", _header._page_count);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "First free page", _header._first_free_page);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Last free page", _header._last_free_page);
 }
 
 seastar::future<> file_impl::write(page_id id, string data) {
@@ -283,28 +284,28 @@ file& file::operator=(file&& other_file) noexcept {
     return *this;
 }
 
-seastar::future<> file::open() {
+seastar::future<> file::open() const{
     if (!_impl) {
         return seastar::now();
     }
     return _impl->open();
 }
 
-seastar::future<> file::close() {
+seastar::future<> file::close() const {
     if (!_impl) {
         return seastar::now();
     }
     return _impl->close();
 }
 
-seastar::future<> file::write(string data) {
+seastar::future<> file::write(string data) const {
     if (!_impl) {
         return seastar::now();
     }
     return _impl->write(std::move(data));
 }
 
-seastar::future<string> file::read() {
+seastar::future<string> file::read() const {
     if (!_impl) {
         return seastar::make_ready_future<string>();
     }

@@ -3,6 +3,7 @@
 //
 
 #include <spiderdb/core/page.h>
+#include <spiderdb/util/log.h>
 
 namespace spiderdb {
 
@@ -89,14 +90,14 @@ seastar::future<> page_impl::read(seastar::simple_memory_output_stream& os) {
 }
 
 void page_impl::log() const noexcept {
-    fmt::print("\t{:<20}|{:>20}", "PAGE", _id);
-    fmt::print("\t{:<20}|{:>20}", "Type", _header._type);
-    fmt::print("\t{:<20}|{:>20}", "Data length", _header._data_len);
-    fmt::print("\t{:<20}|{:>20}", "Record length", _header._record_len);
-    fmt::print("\t{:<20}|{:>20}", "Next page", _header._next);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "PAGE", _id);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Type", _header._type);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Data length", _header._data_len);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Record length", _header._record_len);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Next page", _header._next);
     size_t data_len = std::min(16, static_cast<int>(_header._data_len));
     string data{_data.c_str(), data_len};
-    fmt::print("\t{:<20}|{:>20}", "Data", data);
+    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Data", data);
 }
 
 page::page(page_id id, const file_config& config) {

@@ -67,16 +67,16 @@ private:
 struct file {
 public:
     file() = delete;
-    file(std::string name, file_config config);
+    file(std::string name, file_config config = file_config());
     ~file() = default;
     file(const file& other_file);
     file(file&& other_file) noexcept;
     file& operator=(const file& other_file);
     file& operator=(file&& other_file) noexcept;
-    seastar::future<> open();
-    seastar::future<> close();
-    seastar::future<> write(string data);
-    seastar::future<string> read();
+    seastar::future<> open() const;
+    seastar::future<> close() const;
+    seastar::future<> write(string data) const;
+    seastar::future<string> read() const;
     void log() const noexcept;
 
 private:

@@ -38,7 +38,6 @@ add_executable(spiderdb_test
 )
 target_link_libraries(spiderdb_test
     spiderdb
-    seastar
     ${Boost_SYSTEM_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
