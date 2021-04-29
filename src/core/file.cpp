@@ -70,8 +70,16 @@ file_impl::file_impl(std::string name, file_config config) : _name{name}, _confi
     _header._page_size = _config.page_size;
 }
 
+file_impl::~file_impl() {
+    if (_lock.available_units() == 0) {
+        SPIDERDB_LOGGER_ERROR("File not closed");
+        _lock.signal();
+    }
+}
+
 seastar::future<> file_impl::open() {
-    if (_open) {
+    if (!_lock.try_wait()) {
+        SPIDERDB_LOGGER_WARN("File already opened");
         return seastar::now();
     }
     return seastar::file_exists(_name).then([this](auto exists) {
@@ -84,8 +92,6 @@ seastar::future<> file_impl::open() {
                 SPIDERDB_LOGGER_INFO("Created file: {}", _name);
                 return _header.flush(file);
             }
-        }).then([this] {
-            _open = true;
         });
     });
 }
@@ -95,11 +101,19 @@ seastar::future<> file_impl::flush() {
 }
 
 seastar::future<> file_impl::close() {
+    if (!_file) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::now();
+    }
     return flush().then([this] {
+        if (!_file) {
+            SPIDERDB_LOGGER_WARN("File already closed");
+            return seastar::now();
+        }
         auto file = std::move(_file);
         return file.close().finally([this] {
-            _open = false;
             SPIDERDB_LOGGER_INFO("Closed file: {}", _name);
+            _lock.signal();
         });
     });
 }
@@ -135,8 +149,7 @@ seastar::future<string> file_impl::read(page_id id) {
 }
 
 seastar::future<page> file_impl::get_free_page() {
-    static thread_local seastar::semaphore _free_page_lock{1};
-    return seastar::with_semaphore(_free_page_lock, 1, [this] {
+    return seastar::with_semaphore(_get_free_page_lock, 1, [this] {
         if (_header._first_free_page != null_page) {
             return get_or_create_page(_header._first_free_page);
         } else {
@@ -263,7 +276,7 @@ seastar::future<> file_impl::unlink_pages_from(page first) {
 }
 
 file::file(std::string name, file_config config) {
-    _impl = seastar::make_shared<file_impl>(std::move(name), std::move(config));
+    _impl = seastar::make_lw_shared<file_impl>(std::move(name), std::move(config));
 }
 
 file::file(const file& other_file) {
@@ -284,7 +297,7 @@ file& file::operator=(file&& other_file) noexcept {
     return *this;
 }
 
-seastar::future<> file::open() const{
+seastar::future<> file::open() const {
     if (!_impl) {
         return seastar::now();
     }

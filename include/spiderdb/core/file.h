@@ -7,6 +7,7 @@
 #include <spiderdb/core/page.h>
 #include <spiderdb/core/config.h>
 #include <seastar/core/file.hh>
+#include <seastar/core/semaphore.hh>
 #include <chrono>
 
 namespace spiderdb {
@@ -34,7 +35,7 @@ struct file_impl : seastar::weakly_referencable<file_impl> {
 public:
     file_impl() = delete;
     file_impl(std::string name, file_config config);
-    ~file_impl() = default;
+    ~file_impl();
     seastar::future<> open();
     seastar::future<> flush();
     seastar::future<> close();
@@ -61,7 +62,8 @@ private:
     file_config _config;
     file_header _header;
     std::unordered_map<page_id, seastar::weak_ptr<page_impl>> _pages;
-    bool _open = false;
+    seastar::semaphore _lock{1};
+    seastar::semaphore _get_free_page_lock{1};
 };
 
 struct file {
@@ -80,7 +82,7 @@ public:
     void log() const noexcept;
 
 private:
-    seastar::shared_ptr<file_impl> _impl;
+    seastar::lw_shared_ptr<file_impl> _impl;
 };
 
 }
