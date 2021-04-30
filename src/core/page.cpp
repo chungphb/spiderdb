@@ -10,32 +10,24 @@ namespace spiderdb {
 seastar::future<> page_header::write(seastar::temporary_buffer<char> buffer) {
     memcpy(&_type, buffer.begin(), sizeof(_type));
     buffer.trim_front(sizeof(_type));
-
     memcpy(&_data_len, buffer.begin(), sizeof(_data_len));
     buffer.trim_front(sizeof(_data_len));
-
     memcpy(&_record_len, buffer.begin(), sizeof(_record_len));
     buffer.trim_front(sizeof(_record_len));
-
     memcpy(&_next, buffer.begin(), sizeof(_next));
     buffer.trim_front(sizeof(_next));
-
     return seastar::now();
 }
 
 seastar::future<> page_header::read(seastar::temporary_buffer<char> buffer) {
     memcpy(buffer.get_write(), &_type, sizeof(_type));
     buffer.trim_front(sizeof(_type));
-
     memcpy(buffer.get_write(), &_data_len, sizeof(_data_len));
     buffer.trim_front(sizeof(_data_len));
-
     memcpy(buffer.get_write(), &_record_len, sizeof(_record_len));
     buffer.trim_front(sizeof(_record_len));
-
     memcpy(buffer.get_write(), &_next, sizeof(_next));
     buffer.trim_front(sizeof(_next));
-
     return seastar::now();
 }
 
@@ -52,6 +44,10 @@ seastar::future<> page_impl::load(seastar::file file) {
         return file.dma_read_exactly<char>(page_offset, _config.page_size).then([this](auto buffer) {
             memcpy(_data.str(), buffer.get(), buffer.size());
             return _header.write(std::move(buffer));
+        }).then([this] {
+            SPIDERDB_LOGGER_TRACE("Page #{:<12} - Loaded page", _id);
+        }).handle_exception([this](auto ex) {
+            SPIDERDB_LOGGER_DEBUG("Page #{:<12} - Failed to load page", _id);
         });
     });
 }
@@ -66,6 +62,10 @@ seastar::future<> page_impl::flush(seastar::file file) {
         return _header.read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
             const auto page_offset = _config.file_header_size + _id * _config.page_size;
             return file.dma_write(page_offset, _data.c_str(), _data.length()).then([](auto) {});
+        }).then([this] {
+            SPIDERDB_LOGGER_TRACE("Page #{:<12} - Flushed page", _id);
+        }).handle_exception([this](auto ex) {
+            SPIDERDB_LOGGER_DEBUG("Page #{:<12} - Failed to flush page", _id);
         });
     });
 }

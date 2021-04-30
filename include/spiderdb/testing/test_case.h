@@ -31,10 +31,28 @@ struct test_case_name : public spiderdb_auto_test_case { \
     const char* get_test_file() override { \
         return __FILE__; \
     } \
-    const char* get_name() { \
+    const char* get_name() override { \
         return #test_case_name; \
     } \
     seastar::future<> run_test_case() override; \
 }; \
 static test_case_name test_case_name ## instance; \
 seastar::future<> test_case_name::run_test_case()
+
+#define SPIDERDB_FIXTURE_TEST_CASE(test_case_name, fixture_name) \
+struct test_case_name : public spiderdb_auto_test_case { \
+    test_case_name() : spiderdb_auto_test_case(spiderdb_current_test_suite) {} \
+    const char* get_test_file() override { \
+        return __FILE__; \
+    } \
+    const char* get_name() override { \
+        return #test_case_name; \
+    } \
+    seastar::future<> run_test_case() override { \
+        fixture_name fixture; \
+        return do_run_test_case(); \
+    } \
+    seastar::future<> do_run_test_case(); \
+}; \
+static test_case_name test_case_name ## instance; \
+seastar::future<> test_case_name::do_run_test_case()

@@ -42,6 +42,7 @@ public:
     seastar::future<> write(string data);
     seastar::future<string> read();
     void log() const noexcept;
+    bool is_open() const noexcept;
     friend page_impl;
 
 protected:
