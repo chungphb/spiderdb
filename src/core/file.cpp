@@ -106,26 +106,12 @@ seastar::future<> file_impl::close() {
     });
 }
 
-seastar::future<> file_impl::write(string data) {
+seastar::future<page_id> file_impl::write(string data) {
     return get_free_page().then([this, data{std::move(data)}](auto free_page) mutable {
-        return write(free_page, std::move(data));
+        return write(free_page, std::move(data)).then([free_page] {
+            return seastar::make_ready_future<page_id>(free_page.get_id());
+        });
     });
-}
-
-seastar::future<string> file_impl::read() {
-    return read(0);
-}
-
-void file_impl::log() const noexcept {
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "FILE", _name);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Page size", _header._page_size);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Page count", _header._page_count);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "First free page", _header._first_free_page);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Last free page", _header._last_free_page);
-}
-
-bool file_impl::is_open() const noexcept {
-    return (bool)_file;
 }
 
 seastar::future<> file_impl::write(page_id id, string data) {
@@ -138,6 +124,17 @@ seastar::future<string> file_impl::read(page_id id) {
     return get_or_create_page(id).then([this](auto page) mutable {
         return read(page);
     });
+}
+
+void file_impl::log() const noexcept {
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page size: ", _header._page_size);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page count: ", _header._page_count);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "First free page: ", _header._first_free_page);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Last free page: ", _header._last_free_page);
+}
+
+bool file_impl::is_open() const noexcept {
+    return (bool)_file;
 }
 
 seastar::future<page> file_impl::get_free_page() {
@@ -308,24 +305,24 @@ seastar::future<> file::close() const {
     return _impl->close();
 }
 
-seastar::future<> file::write(string data) const {
+seastar::future<page_id> file::write(string data) const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::now();
+        return seastar::make_ready_future<page_id>(null_page);
     }
     if (data.empty()) {
         SPIDERDB_LOGGER_WARN("Empty string");
-        return seastar::now();
+        return seastar::make_ready_future<page_id>(null_page);
     }
     return _impl->write(std::move(data));
 }
 
-seastar::future<string> file::read() const {
+seastar::future<string> file::read(page_id id) const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
         return seastar::make_ready_future<string>();
     }
-    return _impl->read();
+    return _impl->read(id);
 }
 
 void file::log() const noexcept {

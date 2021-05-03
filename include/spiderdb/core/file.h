@@ -39,15 +39,14 @@ public:
     seastar::future<> open();
     seastar::future<> flush();
     seastar::future<> close();
-    seastar::future<> write(string data);
-    seastar::future<string> read();
+    seastar::future<page_id> write(string data);
+    seastar::future<> write(page_id id, string data);
+    seastar::future<string> read(page_id id);
     void log() const noexcept;
     bool is_open() const noexcept;
     friend page_impl;
 
 protected:
-    seastar::future<> write(page_id id, string data);
-    seastar::future<string> read(page_id id);
     seastar::future<page> get_free_page();
     seastar::future<page> get_or_create_page(page_id id);
     seastar::future<> unlink_pages_from(page_id id);
@@ -78,8 +77,8 @@ public:
     file& operator=(file&& other_file) noexcept;
     seastar::future<> open() const;
     seastar::future<> close() const;
-    seastar::future<> write(string data) const;
-    seastar::future<string> read() const;
+    seastar::future<page_id> write(string data) const;
+    seastar::future<string> read(page_id id) const;
     void log() const noexcept;
 
 private:

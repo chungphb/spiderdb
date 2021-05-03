@@ -45,9 +45,10 @@ seastar::future<> page_impl::load(seastar::file file) {
             memcpy(_data.str(), buffer.get(), buffer.size());
             return _header.write(std::move(buffer));
         }).then([this] {
-            SPIDERDB_LOGGER_TRACE("Page #{:<12} - Loaded page", _id);
+            SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Loaded", _id);
+            log();
         }).handle_exception([this](auto ex) {
-            SPIDERDB_LOGGER_DEBUG("Page #{:<12} - Failed to load page", _id);
+            SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Failed to load", _id);
         });
     });
 }
@@ -58,14 +59,15 @@ seastar::future<> page_impl::flush(seastar::file file) {
     }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         seastar::temporary_buffer<char> buffer{_data.str(), _data.size()};
-        memset(buffer.get_write(), 0, _config.page_header_size);
+        memset(buffer.get_write(), 'h', _config.page_header_size);
         return _header.read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
             const auto page_offset = _config.file_header_size + _id * _config.page_size;
-            return file.dma_write(page_offset, _data.c_str(), _data.length()).then([](auto) {});
+            return file.dma_write(page_offset, buffer.get_write(), buffer.size()).then([buffer{buffer.share()}](auto) {});
         }).then([this] {
-            SPIDERDB_LOGGER_TRACE("Page #{:<12} - Flushed page", _id);
+            SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Flushed", _id);
+            log();
         }).handle_exception([this](auto ex) {
-            SPIDERDB_LOGGER_DEBUG("Page #{:<12} - Failed to flush page", _id);
+            SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Failed to flush", _id);
         });
     });
 }
@@ -90,14 +92,10 @@ seastar::future<> page_impl::read(seastar::simple_memory_output_stream& os) {
 }
 
 void page_impl::log() const noexcept {
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "PAGE", _id);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Type", _header._type);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Data length", _header._data_len);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Record length", _header._record_len);
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Next page", _header._next);
-    size_t data_len = std::min(16, static_cast<int>(_header._data_len));
-    string data{_data.c_str(), data_len};
-    SPIDERDB_LOGGER_DEBUG("\t{:<20}|{:>20}", "Data", data);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Type: ", _header._type);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Data length: ", _header._data_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Record length: ", _header._record_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next page: ", _header._next);
 }
 
 page::page(page_id id, const file_config& config) {

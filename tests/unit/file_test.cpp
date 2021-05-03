@@ -107,11 +107,11 @@ SPIDERDB_TEST_SUITE_END()
 
 namespace {
 
-struct test_write_fixture {
-    test_write_fixture() {
+struct file_test_fixture {
+    file_test_fixture() {
         system(fmt::format("rm {}", DATA_FILE).c_str());
     }
-    ~test_write_fixture() = default;
+    ~file_test_fixture() = default;
 };
 
 spiderdb::string generate_data(char c = '0', size_t len = 1 << 16, const char* prefix = "") {
@@ -125,60 +125,69 @@ spiderdb::string generate_data(char c = '0', size_t len = 1 << 16, const char* p
 
 SPIDERDB_TEST_SUITE(file_test_write)
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_a_regular_string, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_a_regular_string, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
         spiderdb::string str = std::move(generate_data('0'));
-        return file.write(str);
+        return file.write(str).then([](auto page_id) {
+            SPIDERDB_CHECK_MESSAGE(page_id == 0, "Wrong page");
+        });
     }).finally([file] {
         return file.close().finally([file] {});
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
         spiderdb::string str;
-        return file.write(str);
+        return file.write(str).then([](auto page_id) {
+            SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+        });
     }).finally([file] {
         return file.close().finally([file] {});
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     spiderdb::string str = std::move(generate_data('0'));
-    return file.write(str).finally([file] {});
+    return file.write(str).then([](auto page_id) {
+        SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+    }).finally([file] {});
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
         return file.close();
     }).then([file] {
         spiderdb::string str = std::move(generate_data('0'));
-        return file.write(str).finally([file] {});
+        return file.write(str).then([](auto page_id) {
+            SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+        }).finally([file] {});
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
-    return file.open().then([file] {
+    return file.open().then([file, work_size{config.page_size - config.page_header_size}] {
         using it = boost::counting_iterator<int>;
-        return seastar::do_for_each(it{0}, it{5}, [file](int i) {
+        return seastar::do_for_each(it{0}, it{5}, [file, work_size](int i) {
             spiderdb::string str = std::move(generate_data(static_cast<char>('0' + i)));
-            return file.write(str).then([i] {
-                SPIDERDB_TEST_MESSAGE("Wrote string {} successfully", i);
+            return file.write(str).then([i, work_size, str_len(str.length())](auto page_id) {
+                SPIDERDB_CHECK_MESSAGE(page_id == i * ((str_len - 1) / work_size + 1), "Wrong page");
+                SPIDERDB_TEST_MESSAGE("String {} written", i);
             });
         });
     }).finally([file] {
@@ -186,16 +195,17 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, test_write
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
-    return file.open().then([file] {
+    return file.open().then([file, work_size{config.page_size - config.page_header_size}] {
         using it = boost::counting_iterator<int>;
-        return seastar::parallel_for_each(it{0}, it{5}, [file](int i) {
+        return seastar::parallel_for_each(it{0}, it{5}, [file, work_size](int i) {
             spiderdb::string str = std::move(generate_data(static_cast<char>('0' + i)));
-            return file.write(str).then([i] {
-                SPIDERDB_TEST_MESSAGE("Wrote string {} successfully", i);
+            return file.write(str).then([i, work_size, str_len(str.length())](auto page_id) {
+                SPIDERDB_CHECK_MESSAGE(page_id < 5 * ((str_len - 1) / work_size + 1), "Wrong page");
+                SPIDERDB_TEST_MESSAGE("String {} written", i);
             });
         });
     }).finally([file] {
@@ -203,22 +213,196 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, test_write_
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_write_after_reopening, test_write_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_write_after_reopening, file_test_fixture) {
     spiderdb::file_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
         spiderdb::string str = std::move(generate_data(static_cast<char>('0')));
-        return file.write(str);
+        return file.write(str).then([file](auto page_id) {
+            SPIDERDB_CHECK_MESSAGE(page_id == 0, "Wrong page");
+        });
     }).finally([file] {
         return file.close().finally([file] {});
-    }).then([file] {
-        return file.open().then([file] {
+    }).then([file, work_size{config.page_size - config.page_header_size}] {
+        return file.open().then([file, work_size] {
             spiderdb::string str = std::move(generate_data(static_cast<char>('1')));
-            return file.write(str);
+            return file.write(str).then([file, work_size, str_len{str.length()}](auto page_id) {
+                SPIDERDB_CHECK_MESSAGE(page_id == (str_len - 1) / work_size + 1, "Wrong page");
+            });
         }).finally([file] {
             return file.close().finally([file] {});
         });
+    });
+}
+
+SPIDERDB_TEST_SUITE_END()
+
+SPIDERDB_TEST_SUITE(file_test_read)
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_a_regular_page, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        spiderdb::string str = std::move(generate_data('0'));
+        return file.write(str).then([file, str](auto page_id) {
+            return file.read(page_id).then([str](auto res) {
+                SPIDERDB_CHECK_MESSAGE(res == str, "Wrong result");
+            });
+        });
+    }).finally([file] {
+        return file.close().finally([file] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_invalid_pages, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        return file.read(spiderdb::null_page).then_wrapped([](auto fut) {
+            SPIDERDB_REQUIRE_MESSAGE(fut.failed(), "Invalid access");
+            try {
+                std::rethrow_exception(fut.get_exception());
+            } catch (std::runtime_error& err) {
+                SPIDERDB_REQUIRE(strcmp(err.what(), "Invalid access") == 0);
+            }
+        }).then([file] {
+            return file.read(spiderdb::page_id{INT64_MAX}).then_wrapped([](auto fut) {
+                SPIDERDB_REQUIRE_MESSAGE(fut.failed(), "Invalid access");
+                try {
+                    std::rethrow_exception(fut.get_exception());
+                } catch (std::runtime_error& err) {
+                    SPIDERDB_REQUIRE(strcmp(err.what(), "Invalid access") == 0);
+                }
+            });
+        });
+    }).finally([file] {
+        return file.close().finally([file] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_before_opening, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.read(spiderdb::page_id{0}).then([](auto res) {
+        SPIDERDB_CHECK_MESSAGE(res.empty(), "Wrong result");
+    }).finally([file] {});
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_after_closing, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        return file.close();
+    }).then([file] {
+        return file.read(spiderdb::page_id{0}).then([](auto res) {
+            SPIDERDB_CHECK_MESSAGE(res.empty(), "Wrong result");
+        }).finally([file] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_a_page_multiple_times, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        spiderdb::string str = std::move(generate_data('0'));
+        return file.write(str).then([file, str](auto page_id) {
+            using it = boost::counting_iterator<int>;
+            return seastar::parallel_for_each(it{0}, it{5}, [file, str, page_id](int) {
+                return file.read(page_id).then([str](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == str, "Wrong result");
+                });
+            });
+        });
+    }).finally([file] {
+        return file.close().finally([file] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_after_reopening, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    using data_t = std::pair<spiderdb::string, spiderdb::page_id>;
+    auto data = seastar::make_lw_shared<data_t>(std::move(generate_data('0')), spiderdb::null_page);
+    return file.open().then([file, data] {
+        return file.write(data->first).then([file, data](auto page_id) {
+            data->second = page_id;
+            return file.read(page_id).then([data](auto res) {
+                SPIDERDB_CHECK_MESSAGE(res == data->first, "Wrong result");
+            });
+        });
+    }).finally([file] {
+        return file.close().finally([file] {});
+    }).then([file, data] {
+        return file.open().then([file, data] {
+            return file.read(data->second).then([data](auto res) {
+                SPIDERDB_CHECK_MESSAGE(res == data->first, "Wrong result");
+            });
+        }).finally([file] {
+            return file.close().finally([file] {});
+        });
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_multiple_pages_consecutively, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        using data_t = std::vector<std::pair<spiderdb::string, spiderdb::page_id>>;
+        auto data = seastar::make_lw_shared<data_t>();
+        for (int i = 0; i < 5; i++) {
+            data->push_back(std::make_pair(std::move(generate_data(static_cast<char>('0' + i))), spiderdb::null_page));
+        }
+        return seastar::parallel_for_each(*data, [file](auto& item) {
+            return file.write(item.first).then([&item](auto page_id) {
+                item.second = page_id;
+                SPIDERDB_TEST_MESSAGE("String written to page {}", page_id);
+            });
+        }).then([file, data] {
+            return seastar::do_for_each(*data, [file](auto& item) {
+                return file.read(item.second).then([&item](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == item.first, "Wrong result");
+                    SPIDERDB_TEST_MESSAGE("String read from page {}", item.second);
+                });
+            });
+        }).finally([data] {});
+    }).finally([file] {
+        return file.close().finally([file] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_read_multiple_pages_concurrently, file_test_fixture) {
+    spiderdb::file_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::file file{DATA_FILE, config};
+    return file.open().then([file] {
+        using data_t = std::vector<std::pair<spiderdb::string, spiderdb::page_id>>;
+        auto data = seastar::make_lw_shared<data_t>();
+        for (int i = 0; i < 5; i++) {
+            data->push_back(std::make_pair(std::move(generate_data(static_cast<char>('0' + i))), spiderdb::null_page));
+        }
+        return seastar::parallel_for_each(*data, [file](auto& item) {
+            return file.write(item.first).then([&item](auto page_id) {
+                item.second = page_id;
+                SPIDERDB_TEST_MESSAGE("String written to page {}", page_id);
+            });
+        }).then([file, data] {
+            return seastar::parallel_for_each(*data, [file](auto& item) {
+                return file.read(item.second).then([&item](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == item.first, "Wrong result");
+                    SPIDERDB_TEST_MESSAGE("String read from page {}", item.second);
+                });
+            });
+        }).finally([data] {});
+    }).finally([file] {
+        return file.close().finally([file] {});
     });
 }
 
