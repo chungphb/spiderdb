@@ -13,6 +13,7 @@
 namespace spiderdb {
 
 struct file_impl;
+struct file;
 
 struct file_header {
 public:
@@ -20,6 +21,9 @@ public:
     seastar::future<> load(seastar::file file);
     seastar::future<> write(seastar::temporary_buffer<char> buffer);
     seastar::future<> read(seastar::temporary_buffer<char> buffer);
+    static constexpr size_t size() noexcept {
+        return sizeof(_page_size) + sizeof(_page_count) + sizeof(_first_free_page) + sizeof(_last_free_page);
+    }
     friend file_impl;
 
 private:
@@ -44,14 +48,12 @@ public:
     seastar::future<string> read(page_id id);
     void log() const noexcept;
     bool is_open() const noexcept;
-    friend page_impl;
+    friend file;
 
-protected:
+private:
     seastar::future<page> get_free_page();
     seastar::future<page> get_or_create_page(page_id id);
     seastar::future<> unlink_pages_from(page_id id);
-
-private:
     seastar::future<> write(page first, string data);
     seastar::future<string> read(page first);
     seastar::future<> unlink_pages_from(page first);
@@ -65,6 +67,8 @@ private:
     seastar::semaphore _lock{1};
     seastar::semaphore _get_free_page_lock{1};
 };
+
+struct node_impl;
 
 struct file {
 public:
@@ -80,6 +84,11 @@ public:
     seastar::future<page_id> write(string data) const;
     seastar::future<string> read(page_id id) const;
     void log() const noexcept;
+    friend node_impl;
+
+private:
+    seastar::future<> write(page first, string data);
+    seastar::future<string> read(page first);
 
 private:
     seastar::lw_shared_ptr<file_impl> _impl;

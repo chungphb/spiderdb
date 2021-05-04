@@ -25,6 +25,9 @@ struct page_header {
 public:
     seastar::future<> write(seastar::temporary_buffer<char> buffer);
     seastar::future<> read(seastar::temporary_buffer<char> buffer);
+    static constexpr size_t size() noexcept {
+        return sizeof(_type) + sizeof(_data_len) + sizeof(_record_len) + sizeof(_next);
+    }
     friend page_impl;
     friend page;
 
@@ -49,7 +52,7 @@ public:
 
 private:
     const page_id _id = null_page;
-    const file_config& _config;
+    const file_config _config;
     page_header _header;
     string _data;
     seastar::semaphore _lock{1};
@@ -61,10 +64,13 @@ public:
     page() = delete;
     page(page_id id, const file_config& config);
     page(seastar::lw_shared_ptr<page_impl> impl);
+    ~page() = default;
     page(const page& other_page);
     page(page&& other_page) noexcept;
     page& operator=(const page& other_page);
     page& operator=(page&& other_page) noexcept;
+
+    // Getters and setters
     page_id get_id() const noexcept;
     seastar::weak_ptr<page_impl> get_pointer() const noexcept;
     uint32_t get_record_length() const noexcept;
@@ -73,6 +79,8 @@ public:
     void set_record_length(uint32_t record_len) noexcept;
     void set_next_page(page_id next) noexcept;
     void set_type(page_type type) noexcept;
+
+    // APIs
     seastar::future<> load(seastar::file file);
     seastar::future<> flush(seastar::file file);
     seastar::future<> write(seastar::simple_memory_input_stream& is);

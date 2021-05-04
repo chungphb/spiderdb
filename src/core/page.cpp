@@ -59,7 +59,7 @@ seastar::future<> page_impl::flush(seastar::file file) {
     }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         seastar::temporary_buffer<char> buffer{_data.str(), _data.size()};
-        memset(buffer.get_write(), 'h', _config.page_header_size);
+        memset(buffer.get_write(), 0, _config.page_header_size);
         return _header.read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
             const auto page_offset = _config.file_header_size + _id * _config.page_size;
             return file.dma_write(page_offset, buffer.get_write(), buffer.size()).then([buffer{buffer.share()}](auto) {});

@@ -333,4 +333,24 @@ void file::log() const noexcept {
     return _impl->log();
 }
 
+seastar::future<> file::write(page first, string data) {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::now();
+    }
+    if (data.empty()) {
+        SPIDERDB_LOGGER_WARN("Empty string");
+        return seastar::now();
+    }
+    return _impl->write(std::move(first), std::move(data));
+}
+
+seastar::future<string> file::read(page first) {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::make_ready_future<string>();
+    }
+    return _impl->read(std::move(first));
+}
+
 }
