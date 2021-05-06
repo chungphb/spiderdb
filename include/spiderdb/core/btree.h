@@ -64,7 +64,7 @@ public:
     const btree_iterator& iterator() const;
     seastar::future<node> create_node(node_type type, seastar::weak_ptr<node_impl>&& parent = nullptr);
     seastar::future<node> get_node(node_id id, seastar::weak_ptr<node_impl>&& parent = nullptr);
-    seastar::future<node> cache_node(node node);
+    seastar::future<> cache_node(node node);
     node get_root() const noexcept;
     file get_file() const noexcept;
     const btree_config& get_config() const noexcept;

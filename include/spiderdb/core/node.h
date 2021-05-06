@@ -42,10 +42,10 @@ public:
     seastar::future<node> get_child(uint32_t id);
     int64_t binary_search(const string& key, uint32_t low, uint32_t high);
     seastar::future<> split();
-    bool need_split() const noexcept;
-    seastar::future<> promote(string&& key, node_id left_child, node_id right_child);
+    bool need_split() noexcept;
+    seastar::future<> promote(string&& promoted_key, node_id left_child, node_id right_child);
     seastar::future<> merge();
-    bool need_merge() const noexcept;
+    bool need_merge() noexcept;
     seastar::future<string> demote(node_id left_child, node_id right_child);
     seastar::future<node_item> first();
     seastar::future<node_item> last();
@@ -55,8 +55,15 @@ public:
     friend node;
 
 private:
-    size_t calculate_data_length(bool reset = false) noexcept;
+    seastar::future<node> create_node(std::vector<string>&& keys, std::vector<pointer>&& pointers);
+    seastar::future<> link_siblings(node left, node right);
+    seastar::future<> cache(node node);
+    seastar::future<> become_parent();
+    void update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers) noexcept;
     void update_metadata() noexcept;
+    size_t calculate_data_length(bool reset = false) noexcept;
+    seastar::future<> invalidate();
+    seastar::future<> clean();
 
 private:
     page _page;
@@ -85,8 +92,11 @@ public:
     node(node&& other_node) noexcept;
     node& operator=(const node& other_node);
     node& operator=(node&& other_node) noexcept;
+    operator bool() const noexcept;
+    bool operator!() const noexcept;
 
     // Getters and setters
+    node_id get_id() const noexcept;
     seastar::weak_ptr<node_impl> get_pointer() const noexcept;
     const std::vector<string>& get_key_list() const noexcept;
     const std::vector<pointer>& get_pointer_list() const noexcept;
@@ -94,10 +104,10 @@ public:
     node_id get_prev_node() const noexcept;
     const string& get_high_key() const noexcept;
     node_id get_parent_node() const noexcept;
-    void set_next_node(node_id next) noexcept;
-    void set_prev_node(node_id prev) noexcept;
-    void set_high_key(string&& high_key) noexcept;
-    void set_parent_node(seastar::weak_ptr<node_impl>&& parent) noexcept;
+    void set_next_node(node_id next) const noexcept;
+    void set_prev_node(node_id prev) const noexcept;
+    void set_high_key(string&& high_key) const noexcept;
+    void set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept;
 
     // APIs
     seastar::future<> load() const;
@@ -116,6 +126,9 @@ public:
     seastar::future<node_item> last() const;
     seastar::future<node_item> next(node_item current) const;
     seastar::future<node_item> prev(node_item current) const;
+    seastar::future<> become_parent();
+    void update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers) const noexcept;
+    seastar::future<> clean();
     void log() const noexcept;
 
 private:

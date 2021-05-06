@@ -190,6 +190,10 @@ public:
         return !operator>(str);
     }
 
+    basic_string<char_t> clone() const {
+        return {_data, _len};
+    }
+
     seastar::simple_memory_input_stream get_input_stream() const {
         return seastar::simple_memory_input_stream(_data, _len);
     }

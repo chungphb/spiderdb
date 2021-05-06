@@ -84,11 +84,13 @@ public:
     seastar::future<page_id> write(string data) const;
     seastar::future<string> read(page_id id) const;
     void log() const noexcept;
+    file_config get_config() const noexcept;
     friend node_impl;
 
 private:
     seastar::future<> write(page first, string data);
     seastar::future<string> read(page first);
+    seastar::future<> unlink_pages_from(page first);
 
 private:
     seastar::lw_shared_ptr<file_impl> _impl;
