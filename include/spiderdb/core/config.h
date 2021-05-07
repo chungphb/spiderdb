@@ -19,6 +19,7 @@ struct btree_config {
     uint32_t max_keys_on_each_node = 1 << 12;
     uint32_t min_keys_on_each_node = 1 << 4;
     uint32_t n_cached_nodes = 1 << 8;
+    bool enable_logging_node_detail = false;
 };
 
 struct spiderdb_config : file_config, btree_config {};

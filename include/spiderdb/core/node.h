@@ -47,10 +47,6 @@ public:
     seastar::future<> merge();
     bool need_merge() noexcept;
     seastar::future<string> demote(node_id left_child, node_id right_child);
-    seastar::future<node_item> first();
-    seastar::future<node_item> last();
-    seastar::future<node_item> next(node_item current);
-    seastar::future<node_item> prev(node_item current);
     void log() const noexcept;
     friend node;
 
@@ -98,11 +94,11 @@ public:
     // Getters and setters
     node_id get_id() const noexcept;
     seastar::weak_ptr<node_impl> get_pointer() const noexcept;
-    const std::vector<string>& get_key_list() const noexcept;
-    const std::vector<pointer>& get_pointer_list() const noexcept;
+    const std::vector<string>& get_key_list() const;
+    const std::vector<pointer>& get_pointer_list() const;
     node_id get_next_node() const noexcept;
     node_id get_prev_node() const noexcept;
-    const string& get_high_key() const noexcept;
+    const string& get_high_key() const;
     node_id get_parent_node() const noexcept;
     void set_next_node(node_id next) const noexcept;
     void set_prev_node(node_id prev) const noexcept;
@@ -122,10 +118,6 @@ public:
     seastar::future<> merge() const;
     bool need_merge() const noexcept;
     seastar::future<string> demote(node_id left_child, node_id right_child) const;
-    seastar::future<node_item> first() const;
-    seastar::future<node_item> last() const;
-    seastar::future<node_item> next(node_item current) const;
-    seastar::future<node_item> prev(node_item current) const;
     seastar::future<> become_parent();
     void update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers) const noexcept;
     seastar::future<> clean();

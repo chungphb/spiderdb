@@ -21,7 +21,7 @@ union pointer {
     data_pointer pointer;
 };
 
-using node_item = std::pair<const string&, data_pointer>;
+using node_item = std::optional<std::pair<string, data_pointer>>;
 
 enum struct page_type : uint8_t {
     unused, primary, overflow, internal, leaf
