@@ -23,15 +23,15 @@ struct page;
 
 struct page_header {
 public:
-    seastar::future<> write(seastar::temporary_buffer<char> buffer);
-    seastar::future<> read(seastar::temporary_buffer<char> buffer);
+    virtual seastar::future<> write(seastar::temporary_buffer<char> buffer);
+    virtual seastar::future<> read(seastar::temporary_buffer<char> buffer);
     static constexpr size_t size() noexcept {
         return sizeof(_type) + sizeof(_data_len) + sizeof(_record_len) + sizeof(_next);
     }
     friend page_impl;
     friend page;
 
-private:
+protected:
     page_type _type = page_type::unused;
     uint32_t _data_len = 0;
     uint32_t _record_len = 0;
@@ -43,6 +43,7 @@ public:
     page_impl() = delete;
     page_impl(page_id id, const file_config& config);
     ~page_impl() = default;
+    uint32_t get_work_size() const noexcept;
     seastar::future<> load(seastar::file file);
     seastar::future<> flush(seastar::file file);
     seastar::future<> write(seastar::simple_memory_input_stream& is);
@@ -51,9 +52,12 @@ public:
     friend page;
 
 private:
+    bool is_valid() const noexcept;
+
+private:
     const page_id _id = null_page;
     const file_config& _config;
-    page_header _header;
+    seastar::shared_ptr<page_header> _header = nullptr;
     string _data;
     seastar::semaphore _lock{1};
     seastar::rwlock _rwlock;
@@ -73,9 +77,12 @@ public:
     // Getters and setters
     page_id get_id() const noexcept;
     seastar::weak_ptr<page_impl> get_pointer() const noexcept;
+    seastar::shared_ptr<page_header> get_header() const noexcept;
+    uint32_t get_work_size() const noexcept;
     uint32_t get_record_length() const noexcept;
     page_id get_next_page() const noexcept;
     page_type get_type() const noexcept;
+    void set_header(seastar::shared_ptr<page_header> header) noexcept;
     void set_record_length(uint32_t record_len) noexcept;
     void set_next_page(page_id next) noexcept;
     void set_type(page_type type) noexcept;

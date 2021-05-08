@@ -8,18 +8,24 @@
 namespace spiderdb {
 
 seastar::future<> btree_header::write(seastar::temporary_buffer<char> buffer) {
-    memcpy(&_root, buffer.begin(), sizeof(_root));
-    buffer.trim_front(sizeof(_root));
-    return seastar::now();
+    return file_header::write(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(file_header::size());
+        memcpy(&_root, buffer.begin(), sizeof(_root));
+        buffer.trim_front(sizeof(_root));
+        return seastar::now();
+    });
 }
 
 seastar::future<> btree_header::read(seastar::temporary_buffer<char> buffer) {
-    memcpy(buffer.get_write(), &_root, sizeof(_root));
-    buffer.trim_front(sizeof(_root));
-    return seastar::now();
+    return file_header::read(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(file_header::size());
+        memcpy(buffer.get_write(), &_root, sizeof(_root));
+        buffer.trim_front(sizeof(_root));
+        return seastar::now();
+    });
 }
 
-btree_impl::btree_impl(std::string name, spiderdb_config config) : _file{std::move(name), static_cast<file_config&>(config)} {
+btree_impl::btree_impl(std::string name, spiderdb_config config) : file_impl{std::move(name), static_cast<file_config&>(config)} {
     _config = static_cast<btree_config&>(config);
 }
 
@@ -27,9 +33,10 @@ node btree_impl::get_root() const noexcept {
     return _root;
 }
 
-file btree_impl::get_file() const noexcept {
-    return _file;
+seastar::weak_ptr<btree_impl> btree_impl::get_pointer() noexcept {
+    return seastar::weakly_referencable<btree_impl>::weak_from_this();
 }
+
 const btree_config& btree_impl::get_config() const noexcept {
     return _config;
 }
@@ -39,15 +46,16 @@ seastar::future<> btree_impl::open() {
         SPIDERDB_LOGGER_WARN("B-Tree already created");
         return seastar::now();
     }
-    return _file.open().then([this] {
+    return file_impl::open().then([this] {
+        _btree_header = seastar::dynamic_pointer_cast<btree_header>(_file_header);
         auto evictor = [](const std::pair<node_id, node>& evicted_item) -> seastar::future<> {
             auto evicted_node = evicted_item.second;
             return evicted_node.flush().finally([evicted_node] {});
         };
         _cache = std::make_unique<cache<node_id, node>>(_config.n_cached_nodes, std::move(evictor));
-        return _file.get_or_create_page(_header._root).then([this](auto root) {
-            _file.increase_page_count();
-            _root = node{root, weak_from_this()};
+        return file_impl::get_or_create_page(_btree_header->_root).then([this](auto root) {
+            _btree_header->_page_count++;
+            _root = node{root, get_pointer()};
             return seastar::futurize_invoke([this, root] {
                 switch (root.get_type()) {
                     case page_type::unused: {
@@ -78,15 +86,13 @@ seastar::future<> btree_impl::flush() {
     }).then([this] {
         return _cache->clear();
     }).then([this] {
-        return _file.flush();
-    }).then([this] {
-        // FIXME: Flush header
+        return file_impl::flush();
     });
 }
 
 seastar::future<> btree_impl::close() {
     return flush().then([this] {
-        return _file.close().then([this] {
+        return file_impl::close().then([this] {
             if (!is_open()) {
                 SPIDERDB_LOGGER_WARN("B-Tree already closed");
                 return seastar::now();
@@ -112,8 +118,8 @@ seastar::future<data_pointer> btree_impl::find(string&& key) {
 }
 
 seastar::future<node> btree_impl::create_node(node_type type, seastar::weak_ptr<node_impl>&& parent) {
-    return _file.get_free_page().then([this, type, parent{std::move(parent)}](auto page) mutable {
-        node new_node{page, weak_from_this(), std::move(parent)};
+    return file_impl::get_free_page().then([this, type, parent{std::move(parent)}](auto page) mutable {
+        node new_node{page, get_pointer(), std::move(parent)};
         new_node.get_page().set_type(type);
         _nodes.emplace(new_node.get_page().get_id(), new_node.get_pointer());
         return cache_node(new_node).then([this, new_node] {
@@ -139,8 +145,8 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
                     _nodes.erase(node_it);
                 }
                 // Otherwise
-                return _file.get_or_create_page(id).then([this](auto page) {
-                    auto loading_node = node{page, weak_from_this()};
+                return file_impl::get_or_create_page(id).then([this](auto page) {
+                    auto loading_node = node{page, get_pointer()};
                     return loading_node.load().then([this, loading_node] {
                         _nodes.emplace(loading_node.get_page().get_id(), loading_node.get_pointer());
                         return seastar::make_ready_future<node>(loading_node);
@@ -149,7 +155,7 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
             });
         });
     }).then([this, parent{std::move(parent)}](auto loaded_node) mutable {
-        loaded_node.set_parent_node(std::move(parent));
+        loaded_node.update_parent(std::move(parent));
         return cache_node(loaded_node).then([loaded_node] {
             return seastar::make_ready_future<node>(loaded_node);
         });
@@ -161,13 +167,22 @@ seastar::future<> btree_impl::cache_node(node node) {
 }
 
 void btree_impl::log() const noexcept {
-    _file.log();
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Root: ", _header._root);
+    file_impl::log();
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Root: ", _btree_header->_root);
 }
 
 bool btree_impl::is_open() const noexcept {
     return (bool)_root;
 }
+
+seastar::shared_ptr<file_header> btree_impl::get_new_file_header() {
+    return seastar::make_shared<btree_header>();
+}
+
+seastar::shared_ptr<page_header> btree_impl::get_new_page_header() {
+    return seastar::make_shared<node_header>();
+}
+
 
 btree::btree(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<btree_impl>(std::move(name), config);

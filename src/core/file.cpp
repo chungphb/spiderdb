@@ -57,39 +57,40 @@ seastar::future<> file_header::read(seastar::temporary_buffer<char> buffer) {
 }
 
 file_impl::file_impl(std::string name, file_config config) : _name{std::move(name)}, _config{config} {
-    _header._size = _config.file_header_size;
-    _header._page_size = _config.page_size;
     spiderdb_logger.set_level(_config.log_level);
 }
 
 file_impl::~file_impl() {
-    if (_lock.available_units() == 0) {
+    if (_file_lock.available_units() == 0) {
         SPIDERDB_LOGGER_ERROR("File not closed");
-        _lock.signal();
+        _file_lock.signal();
     }
 }
 
 seastar::future<> file_impl::open() {
-    if (!_lock.try_wait() || is_open()) {
+    if (!_file_lock.try_wait() || is_open()) {
         SPIDERDB_LOGGER_WARN("File already opened");
         return seastar::now();
     }
+    _file_header = get_new_file_header();
+    _file_header->_size = _config.file_header_size;
+    _file_header->_page_size = _config.page_size;
     return seastar::file_exists(_name).then([this](auto exists) {
         return seastar::open_file_dma(_name, seastar::open_flags::create | seastar::open_flags::rw).then([this, exists](auto file) {
             _file = file;
             if (exists) {
                 SPIDERDB_LOGGER_INFO("Opened file: {}", _name);
-                return _header.load(file);
+                return _file_header->load(file);
             } else {
                 SPIDERDB_LOGGER_INFO("Created file: {}", _name);
-                return _header.flush(file);
+                return _file_header->flush(file);
             }
         });
     });
 }
 
 seastar::future<> file_impl::flush() {
-    return _header.flush(_file);
+    return _file_header->flush(_file);
 }
 
 seastar::future<> file_impl::close() {
@@ -101,7 +102,7 @@ seastar::future<> file_impl::close() {
         auto file = std::move(_file);
         return file.close().finally([this] {
             SPIDERDB_LOGGER_INFO("Closed file: {}", _name);
-            _lock.signal();
+            _file_lock.signal();
         });
     });
 }
@@ -124,52 +125,6 @@ seastar::future<string> file_impl::read(page_id id) {
     return get_or_create_page(id).then([this](auto page) mutable {
         return read(page);
     });
-}
-
-void file_impl::log() const noexcept {
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page size: ", _header._page_size);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page count: ", _header._page_count);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "First free page: ", _header._first_free_page);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Last free page: ", _header._last_free_page);
-}
-
-bool file_impl::is_open() const noexcept {
-    return (bool)_file;
-}
-
-seastar::future<page> file_impl::get_free_page() {
-    return seastar::with_semaphore(_get_free_page_lock, 1, [this] {
-        if (_header._first_free_page != null_page) {
-            return get_or_create_page(_header._first_free_page);
-        } else {
-            return get_or_create_page(_header._page_count++);
-        }
-    }).then([this](auto free_page) {
-        _header._first_free_page = free_page.get_next_page();
-        if (_header._first_free_page == null_page) {
-            _header._last_free_page = null_page;
-        }
-        _header._dirty = true;
-        free_page.set_next_page(null_page);
-        free_page.set_type(page_type::unused);
-        return seastar::make_ready_future<page>(free_page);
-    });
-}
-
-seastar::future<page> file_impl::get_or_create_page(page_id id) {
-    if (id < 0 || id > _header._page_count) {
-        return seastar::make_exception_future<page>(std::runtime_error("Invalid access"));
-    }
-    auto page_it = _pages.find(id);
-    if (page_it != _pages.end() && page_it->second) {
-        return seastar::make_ready_future<page>(page_it->second->shared_from_this());
-    }
-    page new_page{id, _config};
-    _pages.emplace(id, new_page.get_pointer());
-    return new_page.load(_file).then([new_page] {
-        return seastar::make_ready_future<page>(new_page);
-    });
-
 }
 
 seastar::future<> file_impl::unlink_pages_from(page_id id) {
@@ -239,15 +194,15 @@ seastar::future<string> file_impl::read(page first) {
 }
 
 seastar::future<> file_impl::unlink_pages_from(page first) {
-    if (_header._first_free_page == null_page) {
-        _header._first_free_page = first.get_id();
-        _header._dirty = true;
+    if (_file_header->_first_free_page == null_page) {
+        _file_header->_first_free_page = first.get_id();
+        _file_header->_dirty = true;
     }
     return seastar::futurize_invoke([this, first] {
-        if (_header._last_free_page == null_page) {
+        if (_file_header->_last_free_page == null_page) {
             return seastar::now();
         }
-        return get_or_create_page(_header._last_free_page).then([this, first](auto last_free_page) {
+        return get_or_create_page(_file_header->_last_free_page).then([this, first](auto last_free_page) {
             last_free_page.set_next_page(first.get_id());
             return last_free_page.flush(_file).finally([last_free_page] {});
         });
@@ -262,14 +217,64 @@ seastar::future<> file_impl::unlink_pages_from(page first) {
                 return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
             });
         }).then([this, current_page_ptr] {
-            _header._last_free_page = current_page_ptr->get_id();
-            _header._dirty = true;
+            _file_header->_last_free_page = current_page_ptr->get_id();
+            _file_header->_dirty = true;
         });
     });
 }
 
-void file_impl::increase_page_count() noexcept {
-    _header._page_count++;
+void file_impl::log() const noexcept {
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page size: ", _file_header->_page_size);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Page count: ", _file_header->_page_count);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "First free page: ", _file_header->_first_free_page);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Last free page: ", _file_header->_last_free_page);
+}
+
+bool file_impl::is_open() const noexcept {
+    return (bool)_file;
+}
+
+seastar::shared_ptr<file_header> file_impl::get_new_file_header() {
+    return seastar::make_shared<file_header>();
+}
+
+seastar::shared_ptr<page_header> file_impl::get_new_page_header() {
+    return seastar::make_shared<page_header>();
+}
+
+seastar::future<page> file_impl::get_free_page() {
+    return seastar::with_semaphore(_get_free_page_lock, 1, [this] {
+        if (_file_header->_first_free_page != null_page) {
+            return get_or_create_page(_file_header->_first_free_page);
+        } else {
+            return get_or_create_page(_file_header->_page_count++);
+        }
+    }).then([this](auto free_page) {
+        _file_header->_first_free_page = free_page.get_next_page();
+        if (_file_header->_first_free_page == null_page) {
+            _file_header->_last_free_page = null_page;
+        }
+        _file_header->_dirty = true;
+        free_page.set_next_page(null_page);
+        free_page.set_type(page_type::unused);
+        return seastar::make_ready_future<page>(free_page);
+    });
+}
+
+seastar::future<page> file_impl::get_or_create_page(page_id id) {
+    if (id < 0 || id > _file_header->_page_count) {
+        return seastar::make_exception_future<page>(std::runtime_error("Invalid access"));
+    }
+    auto page_it = _pages.find(id);
+    if (page_it != _pages.end() && page_it->second) {
+        return seastar::make_ready_future<page>(page_it->second->shared_from_this());
+    }
+    page new_page{id, _config};
+    new_page.set_header(get_new_page_header());
+    _pages.emplace(id, new_page.get_pointer());
+    return new_page.load(_file).then([new_page] {
+        return seastar::make_ready_future<page>(new_page);
+    });
 }
 
 file::file(std::string name, file_config config) {
@@ -342,74 +347,6 @@ void file::log() const noexcept {
         return;
     }
     return _impl->log();
-}
-
-seastar::future<> file::flush() const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
-    }
-    return _impl->flush();
-}
-
-seastar::future<page> file::get_free_page() const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::make_exception_future<page>(std::runtime_error("Closed error"));
-    }
-    return _impl->get_free_page();
-}
-
-seastar::future<page> file::get_or_create_page(page_id id) const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::make_exception_future<page>(std::runtime_error("Closed error"));
-    }
-    return _impl->get_or_create_page(id);
-}
-
-seastar::future<> file::unlink_pages_from(page_id id) const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
-    }
-    return _impl->unlink_pages_from(id);
-}
-
-seastar::future<> file::write(page first, string data) const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::now();
-    }
-    if (data.empty()) {
-        SPIDERDB_LOGGER_WARN("Empty string");
-        return seastar::now();
-    }
-    return _impl->write(std::move(first), std::move(data));
-}
-
-seastar::future<string> file::read(page first) const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::make_ready_future<string>();
-    }
-    return _impl->read(std::move(first));
-}
-
-seastar::future<> file::unlink_pages_from(page first) const {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return seastar::now();
-    }
-    return _impl->unlink_pages_from(std::move(first));
-}
-
-void file::increase_page_count() const noexcept {
-    if (!_impl || !_impl->is_open()) {
-        SPIDERDB_LOGGER_WARN("File already closed");
-        return;
-    }
-    _impl->increase_page_count();
 }
 
 }

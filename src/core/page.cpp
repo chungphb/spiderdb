@@ -32,18 +32,25 @@ seastar::future<> page_header::read(seastar::temporary_buffer<char> buffer) {
 }
 
 page_impl::page_impl(page_id id, const file_config& config) : _id{id}, _config{config} {
-    _data = std::move(string{_config.page_size, 0});
+    _data = string{_config.page_size, 0};
+}
+
+uint32_t page_impl::get_work_size() const noexcept {
+    return _config.page_size - _config.page_header_size;
 }
 
 seastar::future<> page_impl::load(seastar::file file) {
     if (!file) {
         return seastar::now();
     }
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid page"));
+    }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         const auto page_offset = _config.file_header_size + _id * _config.page_size;
         return file.dma_read_exactly<char>(page_offset, _config.page_size).then([this](auto buffer) {
             memcpy(_data.str(), buffer.get(), buffer.size());
-            return _header.write(std::move(buffer));
+            return _header->write(std::move(buffer));
         }).then([this] {
             SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Loaded", _id);
             log();
@@ -57,10 +64,13 @@ seastar::future<> page_impl::flush(seastar::file file) {
     if (!file) {
         return seastar::now();
     }
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid page"));
+    }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         seastar::temporary_buffer<char> buffer{_data.str(), _data.size()};
         memset(buffer.get_write(), 0, _config.page_header_size);
-        return _header.read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
+        return _header->read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
             const auto page_offset = _config.file_header_size + _id * _config.page_size;
             return file.dma_write(page_offset, buffer.get_write(), buffer.size()).then([buffer{buffer.share()}](auto) {});
         }).then([this] {
@@ -73,29 +83,39 @@ seastar::future<> page_impl::flush(seastar::file file) {
 }
 
 seastar::future<> page_impl::write(seastar::simple_memory_input_stream& is) {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid page"));
+    }
     return seastar::with_lock(_rwlock.for_write(), [this, &is] {
-        _header._data_len = std::min(_config.page_size - _config.page_header_size, static_cast<uint32_t>(is.size()));
-        if (_header._data_len > 0) {
-            is.read(_data.str() + _config.page_header_size, _header._data_len);
+        _header->_data_len = std::min(get_work_size(), static_cast<uint32_t>(is.size()));
+        if (_header->_data_len > 0) {
+            is.read(_data.str() + _config.page_header_size, _header->_data_len);
         }
         return seastar::now();
     });
 }
 
 seastar::future<> page_impl::read(seastar::simple_memory_output_stream& os) {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid page"));
+    }
     return seastar::with_lock(_rwlock.for_read(), [this, &os] {
-        if (_header._data_len > 0) {
-            os.write(_data.str() + _config.page_header_size, _header._data_len);
+        if (_header->_data_len > 0) {
+            os.write(_data.str() + _config.page_header_size, _header->_data_len);
         }
         return seastar::now();
     });
 }
 
 void page_impl::log() const noexcept {
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Type: ", _header._type);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Data length: ", _header._data_len);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Record length: ", _header._record_len);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next page: ", _header._next);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Type: ", _header->_type);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Data length: ", _header->_data_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Record length: ", _header->_record_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next page: ", _header->_next);
+}
+
+bool page_impl::is_valid() const noexcept {
+    return (bool)_header;
 }
 
 page::page(page_id id, const file_config& config) {
@@ -138,46 +158,67 @@ seastar::weak_ptr<page_impl> page::get_pointer() const noexcept {
     return _impl->weak_from_this();
 }
 
+seastar::shared_ptr<page_header> page::get_header() const noexcept {
+    if (!_impl) {
+        return nullptr;
+    }
+    return _impl->_header;
+}
+
+uint32_t page::get_work_size() const noexcept {
+    if (!_impl) {
+        return 0;
+    }
+    return _impl->get_work_size();
+}
+
 uint32_t page::get_record_length() const noexcept {
     if (!_impl) {
         return 0;
     }
-    return _impl->_header._record_len;
+    return _impl->_header->_record_len;
 }
 
 page_id page::get_next_page() const noexcept {
     if (!_impl) {
         return null_page;
     }
-    return _impl->_header._next;
+    return _impl->_header->_next;
 }
 
 page_type page::get_type() const noexcept {
     if (!_impl) {
         return page_type::unused;
     }
-    return _impl->_header._type;
+    return _impl->_header->_type;
+}
+
+void page::set_header(seastar::shared_ptr<page_header> header) noexcept {
+    if (!_impl) {
+        return;
+    }
+    _impl->_header = header;
 }
 
 void page::set_record_length(uint32_t record_len) noexcept {
     if (!_impl) {
         return;
     }
-    _impl->_header._record_len = record_len;
+    _impl->_header->_record_len = record_len;
 }
 
 void page::set_next_page(page_id next) noexcept {
     if (!_impl) {
         return;
     }
-    _impl->_header._next = next;
+    _impl->_header->_next = next;
 }
 
 void page::set_type(page_type type) noexcept {
     if (!_impl) {
         return;
     }
-    _impl->_header._type = type;
+    _impl->_header->_type = type;
 }
 
 seastar::future<> page::load(seastar::file file) {

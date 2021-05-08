@@ -9,87 +9,83 @@
 namespace spiderdb {
 
 seastar::future<> node_header::write(seastar::temporary_buffer<char> buffer) {
-    memcpy(&_parent, buffer.begin(), sizeof(_parent));
-    buffer.trim_front(sizeof(_parent));
-    memcpy(&_key_count, buffer.begin(), sizeof(_key_count));
-    buffer.trim_front(sizeof(_key_count));
-    memcpy(&_prefix_len, buffer.begin(), sizeof(_prefix_len));
-    buffer.trim_front(sizeof(_prefix_len));
-    return seastar::now();
+    return page_header::write(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(page_header::size());
+        memcpy(&_parent, buffer.begin(), sizeof(_parent));
+        buffer.trim_front(sizeof(_parent));
+        memcpy(&_key_count, buffer.begin(), sizeof(_key_count));
+        buffer.trim_front(sizeof(_key_count));
+        memcpy(&_prefix_len, buffer.begin(), sizeof(_prefix_len));
+        buffer.trim_front(sizeof(_prefix_len));
+        return seastar::now();
+    });
 }
 
 seastar::future<> node_header::read(seastar::temporary_buffer<char> buffer) {
-    memcpy(buffer.get_write(), &_parent, sizeof(_parent));
-    buffer.trim_front(sizeof(_parent));
-    memcpy(buffer.get_write(), &_key_count, sizeof(_key_count));
-    buffer.trim_front(sizeof(_key_count));
-    memcpy(buffer.get_write(), &_prefix_len, sizeof(_prefix_len));
-    buffer.trim_front(sizeof(_prefix_len));
-    return seastar::now();
+    return page_header::read(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(page_header::size());
+        memcpy(buffer.get_write(), &_parent, sizeof(_parent));
+        buffer.trim_front(sizeof(_parent));
+        memcpy(buffer.get_write(), &_key_count, sizeof(_key_count));
+        buffer.trim_front(sizeof(_key_count));
+        memcpy(buffer.get_write(), &_prefix_len, sizeof(_prefix_len));
+        buffer.trim_front(sizeof(_prefix_len));
+        return seastar::now();
+    });
 }
 
 node_impl::node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::weak_ptr<node_impl>&& parent) : _page{std::move(page)} {
     if (btree) {
         _btree = std::move(btree);
+        _header = seastar::dynamic_pointer_cast<node_header>(_page.get_header());
         _parent = std::move(parent);
         if (_parent) {
-            if (_parent->_page.get_id() != _header._parent) {
-                _header._parent = _parent->_page.get_id();
+            if (_parent->_page.get_id() != _header->_parent) {
+                _header->_parent = _parent->_page.get_id();
                 _dirty = true;
             }
-        }
-    }
-
-}
-
-void node_impl::set_parent_node(seastar::weak_ptr<node_impl>&& parent) noexcept {
-    _parent = std::move(parent);
-    if (_parent) {
-        if (_parent->_page.get_id() != _header._parent) {
-            _header._parent = _parent->_page.get_id();
-            _dirty = true;
         }
     }
 }
 
 seastar::future<> node_impl::load() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     if (_loaded) {
         return seastar::now();
     }
-    return _btree->get_file().read(_page).then([this](auto&& data) {
+    return _btree->read(_page).then([this](auto&& data) {
         auto&& is = data.get_input_stream();
         // Load prefix
-        char prefix_byte_arr[_header._prefix_len];
-        if (_header._prefix_len > 0) {
-            is.read(prefix_byte_arr, _header._prefix_len);
-            _prefix = std::move(string{prefix_byte_arr, _header._prefix_len});
+        char prefix_byte_arr[_header->_prefix_len];
+        if (_header->_prefix_len > 0) {
+            is.read(prefix_byte_arr, _header->_prefix_len);
+            _prefix = std::move(string{prefix_byte_arr, _header->_prefix_len});
         }
         // Load keys
         string current_key;
-        for (uint32_t i = 0; i < _header._key_count; ++i) {
+        for (uint32_t i = 0; i < _header->_key_count; ++i) {
             // Load key length
             uint32_t key_len;
             char key_len_byte_arr[sizeof(key_len)];
             is.read(key_len_byte_arr, sizeof(key_len));
             memcpy(&key_len, key_len_byte_arr, sizeof(key_len));
             // Load key
-            char current_key_byte_arr[_header._prefix_len + key_len];
-            if (_header._prefix_len > 0) {
+            char current_key_byte_arr[_header->_prefix_len + key_len];
+            if (_header->_prefix_len > 0) {
                 memcpy(current_key_byte_arr, _prefix.c_str(), _prefix.length());
             }
             if (key_len > 0) {
                 char key_byte_arr[key_len];
                 is.read(key_byte_arr, key_len);
-                memcpy(current_key_byte_arr + _header._prefix_len, key_byte_arr, key_len);
+                memcpy(current_key_byte_arr + _header->_prefix_len, key_byte_arr, key_len);
             }
-            current_key = std::move(string{current_key_byte_arr, static_cast<size_t>(_header._prefix_len + key_len)});
+            current_key = std::move(string{current_key_byte_arr, static_cast<size_t>(_header->_prefix_len + key_len)});
             _keys.push_back(std::move(current_key));
         }
         // Load pointers
-        uint32_t pointer_count = _header._key_count + (_page.get_type() == node_type::internal ? 1 : 0);
+        uint32_t pointer_count = _header->_key_count + (_page.get_type() == node_type::internal ? 1 : 0);
         pointer current_pointer;
         char current_pointer_byte_arr[sizeof(current_pointer)];
         for (uint32_t i = 0; i < pointer_count; ++i) {
@@ -122,8 +118,8 @@ seastar::future<> node_impl::load() {
 }
 
 seastar::future<> node_impl::flush() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     if (!_dirty) {
         return seastar::now();
@@ -168,7 +164,7 @@ seastar::future<> node_impl::flush() {
     os.write(sibling_byte_arr, sizeof(node_id));
     memcpy(sibling_byte_arr, &_next, sizeof(node_id));
     os.write(sibling_byte_arr, sizeof(node_id));
-    return _btree->get_file().write(_page, std::move(data)).then([this] {
+    return _btree->write(_page, std::move(data)).then([this] {
         // Mark as flushed
         _parent = nullptr;
         _dirty = false;
@@ -177,8 +173,8 @@ seastar::future<> node_impl::flush() {
 }
 
 seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     return seastar::with_semaphore(_lock, 1, [this, key{std::move(key)}, ptr]() mutable {
         auto id = binary_search(key, 0, _keys.size() - 1);
@@ -213,8 +209,8 @@ seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
 }
 
 seastar::future<> node_impl::remove(string&& key) {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     return seastar::with_semaphore(_lock, 1, [this, key{std::move(key)}]() mutable {
         auto id = binary_search(key, 0, _keys.size() - 1);
@@ -248,8 +244,8 @@ seastar::future<> node_impl::remove(string&& key) {
 }
 
 seastar::future<data_pointer> node_impl::find(string&& key) {
-    if (!_btree) {
-        return seastar::make_exception_future<data_pointer>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<data_pointer>(std::runtime_error("Invalid node"));
     }
     if (_next != null_node && key > _high_key) {
         return _btree->get_node(_next).then([key](auto next) mutable {
@@ -291,33 +287,43 @@ seastar::future<data_pointer> node_impl::find(string&& key) {
 }
 
 seastar::future<node> node_impl::get_parent() {
-    if (!_btree) {
-        return seastar::make_exception_future<node>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<node>(std::runtime_error("Invalid node"));
     }
     if (_parent) {
         return seastar::make_ready_future<node>(_parent->shared_from_this());
     }
-    if (_header._parent == null_node) {
+    if (_header->_parent == null_node) {
         return seastar::make_ready_future<node>(nullptr);
     }
-    if (_header._parent == _btree->get_root().get_id()) {
+    if (_header->_parent == _btree->get_root().get_id()) {
         _parent = std::move(_btree->get_root().get_pointer());
         return seastar::make_ready_future<node>(_btree->get_root());
     }
-    return _btree->get_node(_header._parent).then([this](auto parent) {
+    return _btree->get_node(_header->_parent).then([this](auto parent) {
         _parent = std::move(parent.get_pointer());
         return seastar::make_ready_future<node>(parent);
     });
 }
 
 seastar::future<node> node_impl::get_child(uint32_t id) {
-    if (!_btree) {
-        return seastar::make_exception_future<node>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<node>(std::runtime_error("Invalid node"));
     }
     if (_page.get_type() != node_type::internal || id < 0 || id >= _pointers.size()) {
         return seastar::make_exception_future<node>(std::runtime_error("Invalid access"));
     }
     return _btree->get_node(_pointers[id].child, weak_from_this());
+}
+
+void node_impl::update_parent(seastar::weak_ptr<node_impl>&& parent) noexcept {
+    _parent = std::move(parent);
+    if (_parent) {
+        if (_parent->_page.get_id() != _header->_parent) {
+            _header->_parent = _parent->_page.get_id();
+            _dirty = true;
+        }
+    }
 }
 
 int64_t node_impl::binary_search(const string& key, uint32_t low, uint32_t high) {
@@ -335,11 +341,11 @@ int64_t node_impl::binary_search(const string& key, uint32_t low, uint32_t high)
 }
 
 seastar::future<> node_impl::split() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     // Prepare data
-    auto midpoint = _header._key_count / 2;
+    auto midpoint = _header->_key_count / 2;
     std::vector<string> left_keys, right_keys;
     std::vector<pointer> left_pointers, right_pointers;
     switch (_page.get_type()) {
@@ -388,7 +394,7 @@ seastar::future<> node_impl::split() {
         return link_siblings(shared_from_this(), sibling).then([this, sibling] {
             return get_parent().then([this, sibling](auto parent) {
                 SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {}", _page.get_id(), sibling.get_id());
-                sibling.set_parent_node(parent.get_pointer());
+                sibling.update_parent(parent.get_pointer());
                 return parent.promote(_high_key.clone(), _page.get_id(), sibling.get_id()).then([this, sibling, parent] {
                     return seastar::when_all_succeed(cache(parent), cache(shared_from_this()), cache(sibling)).discard_result();
                 });
@@ -404,7 +410,7 @@ bool node_impl::need_split() noexcept {
     if (_keys.size() > _btree->get_config().max_keys_on_each_node) {
         return true;
     }
-    auto work_size = _btree->get_file().get_config().page_size - _btree->get_file().get_config().page_header_size;
+    auto work_size = _page.get_work_size();
     if (calculate_data_length() > work_size) {
         if (calculate_data_length(true) > work_size) {
             return true;
@@ -414,6 +420,9 @@ bool node_impl::need_split() noexcept {
 }
 
 seastar::future<> node_impl::promote(string&& promoted_key, node_id left_child, node_id right_child) {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
+    }
     auto it = std::find_if(_pointers.begin(), _pointers.end(), [left_child](const auto& pointer) {
         return pointer.child == left_child;
     });
@@ -433,8 +442,8 @@ seastar::future<> node_impl::promote(string&& promoted_key, node_id left_child, 
 }
 
 seastar::future<> node_impl::merge() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     if (_keys.empty() && _pointers.empty()) {
         return invalidate();
@@ -446,7 +455,7 @@ seastar::future<> node_impl::merge() {
             return seastar::now();
         }
         return _btree->get_node(_prev).then([this, left_ptr, right_ptr](auto prev) {
-            if (prev.get_parent_node() == _header._parent && prev.need_merge()) {
+            if (prev.get_parent_node() == _header->_parent && prev.need_merge()) {
                 *left_ptr = prev;
                 *right_ptr = shared_from_this();
             }
@@ -460,7 +469,7 @@ seastar::future<> node_impl::merge() {
             return seastar::now();
         }
         return _btree->get_node(_next).then([this, left_ptr, right_ptr](auto next) {
-            if (next.get_parent_node() == _header._parent && next.need_merge()) {
+            if (next.get_parent_node() == _header->_parent && next.need_merge()) {
                 *left_ptr = shared_from_this();
                 *right_ptr = next;
             }
@@ -530,7 +539,7 @@ bool node_impl::need_merge() noexcept {
     if (_keys.size() < _btree->get_config().min_keys_on_each_node / 2) {
         return true;
     }
-    auto work_size = _btree->get_file().get_config().page_size - _btree->get_file().get_config().page_header_size;
+    auto work_size = _page.get_work_size();
     if (calculate_data_length() < work_size / 2) {
         if (calculate_data_length(true) < work_size / 2) {
             return true;
@@ -540,6 +549,9 @@ bool node_impl::need_merge() noexcept {
 }
 
 seastar::future<string> node_impl::demote(node_id left_child, node_id right_child) {
+    if (!is_valid()) {
+        return seastar::make_exception_future<string>(std::runtime_error("Invalid node"));
+    }
     auto it = std::find_if(_pointers.begin(), _pointers.end(), [left_child](const auto& pointer) {
         return pointer.child == left_child;
     });
@@ -579,9 +591,9 @@ seastar::future<string> node_impl::demote(node_id left_child, node_id right_chil
 
 void node_impl::log() const noexcept {
     _page.log();
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of keys: ", _header._key_count);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prefix length: ", _header._prefix_len);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _header._parent);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of keys: ", _header->_key_count);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prefix length: ", _header->_prefix_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _header->_parent);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prev node: ", _prev);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next node: ", _next);
     if (_btree && _btree->get_config().enable_logging_node_detail) {
@@ -617,8 +629,8 @@ void node_impl::log() const noexcept {
 }
 
 seastar::future<node> node_impl::create_node(std::vector<string>&& keys, std::vector<pointer>&& pointers) {
-    if (!_btree) {
-        return seastar::make_exception_future<node>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<node>(std::runtime_error("Invalid node"));
     }
     return _btree->create_node(_page.get_type()).then([keys{std::move(keys)}, pointers{std::move(pointers)}](auto child) mutable {
         child.update_data(std::move(keys), std::move(pointers));
@@ -629,8 +641,8 @@ seastar::future<node> node_impl::create_node(std::vector<string>&& keys, std::ve
 }
 
 seastar::future<> node_impl::link_siblings(node left, node right) {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     return seastar::futurize_invoke([this, left, right] {
         if (left.get_next_node() != null_node) {
@@ -648,22 +660,22 @@ seastar::future<> node_impl::link_siblings(node left, node right) {
 }
 
 seastar::future<> node_impl::cache(node node) {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     return _btree->cache_node(node);
 }
 
 seastar::future<> node_impl::become_parent() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     if (_page.get_type() != node_type::internal) {
         return seastar::now();
     }
     return seastar::parallel_for_each(_pointers, [this](auto pointer) {
         return _btree->get_node(pointer.child, weak_from_this()).then([this](auto child) {
-             child.set_parent_node(weak_from_this());
+             child.update_parent(weak_from_this());
              return cache(child);
         });
     });
@@ -681,9 +693,9 @@ void node_impl::update_metadata() noexcept {
         SPIDERDB_LOGGER_ERROR("Node {:0>12} - Exceeded maximum number of keys: {}", _page.get_id(), _keys.size());
         return;
     }
-    _header._key_count = _keys.size();
+    _header->_key_count = _keys.size();
     if (_keys.size() > 1) {
-        auto old_prefix_len = _header._prefix_len;
+        auto old_prefix_len = _header->_prefix_len;
         auto calculate_prefix_func = [](string str1, string str2) {
             size_t prefix_len = 0;
             size_t len = std::max(str1.length(), str2.length());
@@ -704,11 +716,11 @@ void node_impl::update_metadata() noexcept {
             if (_data_len > 0) {
                 _data_len += _prefix.length() - old_prefix_len;
             }
-            _header._prefix_len = _prefix.length();
+            _header->_prefix_len = _prefix.length();
         }
     } else {
         _prefix = string{};
-        _header._prefix_len = 0;
+        _header->_prefix_len = 0;
     }
     _dirty = true;
 }
@@ -730,8 +742,8 @@ size_t node_impl::calculate_data_length(bool reset) noexcept {
 }
 
 seastar::future<> node_impl::invalidate() {
-    if (!_btree) {
-        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
     }
     if (_page.get_id() == _btree->get_root().get_id()) {
         return seastar::now();
@@ -767,6 +779,9 @@ seastar::future<> node_impl::invalidate() {
 }
 
 seastar::future<> node_impl::clean() {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(std::runtime_error("Invalid node"));
+    }
     update_data({}, {});
     _parent = nullptr;
     _next = null_node;
@@ -774,11 +789,15 @@ seastar::future<> node_impl::clean() {
     _prefix = string{};
     _high_key = string{};
     _data_len = 0;
-    _header._parent = null_node;
-    _header._key_count = 0;
-    _header._prefix_len = 0;
+    _header->_parent = null_node;
+    _header->_key_count = 0;
+    _header->_prefix_len = 0;
     SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Cleaned", _page.get_id());
-    return _btree->get_file().unlink_pages_from(_page);
+    return _btree->unlink_pages_from(_page);
+}
+
+bool node_impl::is_valid() const noexcept {
+    return (bool)_btree && (bool)_header;
 }
 
 node::node(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::weak_ptr<node_impl>&& parent) {
@@ -854,7 +873,7 @@ node_id node::get_parent_node() const noexcept {
     if (!_impl) {
         return null_node;
     }
-    return _impl->_header._parent;
+    return _impl->_header->_parent;
 }
 
 node_id node::get_next_node() const noexcept {
@@ -876,13 +895,6 @@ const string& node::get_high_key() const {
         throw std::runtime_error("Invalid node");
     }
     return _impl->_high_key;
-}
-
-void node::set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept {
-    if (!_impl) {
-        return;
-    }
-    _impl->set_parent_node(std::move(parent));
 }
 
 void node::set_next_node(node_id next) const noexcept {
@@ -951,9 +963,16 @@ seastar::future<data_pointer> node::find(string&& key) const {
     return _impl->find(std::move(key));
 }
 
-int32_t node::binary_search(const string& key, int32_t low, int32_t high) const {
+void node::update_parent(seastar::weak_ptr<node_impl>&& parent) const noexcept {
     if (!_impl) {
-        return INT32_MIN;
+        return;
+    }
+    _impl->update_parent(std::move(parent));
+}
+
+int64_t node::binary_search(const string& key, int32_t low, int32_t high) const {
+    if (!_impl) {
+        return INT64_MIN;
     }
     return _impl->binary_search(key, low, high);
 }
