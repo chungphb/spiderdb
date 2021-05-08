@@ -52,7 +52,7 @@ public:
 
 private:
     const page_id _id = null_page;
-    const file_config _config;
+    const file_config& _config;
     page_header _header;
     string _data;
     seastar::semaphore _lock{1};

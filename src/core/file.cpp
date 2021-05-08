@@ -166,7 +166,7 @@ seastar::future<page> file_impl::get_or_create_page(page_id id) {
     }
     page new_page{id, _config};
     _pages.emplace(id, new_page.get_pointer());
-    return new_page.load(_file).then([this, new_page] {
+    return new_page.load(_file).then([new_page] {
         return seastar::make_ready_future<page>(new_page);
     });
 
@@ -196,7 +196,7 @@ seastar::future<> file_impl::write(page first, string data) {
                         return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
                     });
                 }
-                return seastar::futurize<page>::invoke([this, next_page]() mutable {
+                return seastar::futurize_invoke([this, next_page]() mutable {
                     if (next_page == null_page) {
                         return get_free_page();
                     }
@@ -243,7 +243,7 @@ seastar::future<> file_impl::unlink_pages_from(page first) {
         _header._first_free_page = first.get_id();
         _header._dirty = true;
     }
-    return seastar::futurize<void>::invoke([this, first] {
+    return seastar::futurize_invoke([this, first] {
         if (_header._last_free_page == null_page) {
             return seastar::now();
         }
@@ -268,6 +268,10 @@ seastar::future<> file_impl::unlink_pages_from(page first) {
     });
 }
 
+void file_impl::increase_page_count() noexcept {
+    _header._page_count++;
+}
+
 file::file(std::string name, file_config config) {
     _impl = seastar::make_lw_shared<file_impl>(std::move(name), config);
 }
@@ -288,6 +292,13 @@ file& file::operator=(const file& other_file) {
 file& file::operator=(file&& other_file) noexcept {
     _impl = std::move(other_file._impl);
     return *this;
+}
+
+const file_config& file::get_config() const {
+    if (!_impl || !_impl->is_open()) {
+        throw std::runtime_error("Closed error");
+    }
+    return _impl->_config;
 }
 
 seastar::future<> file::open() const {
@@ -333,15 +344,39 @@ void file::log() const noexcept {
     return _impl->log();
 }
 
-file_config file::get_config() const noexcept {
+seastar::future<> file::flush() const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
-        return file_config{};
+        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
     }
-    return _impl->_config;
+    return _impl->flush();
 }
 
-seastar::future<> file::write(page first, string data) {
+seastar::future<page> file::get_free_page() const {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::make_exception_future<page>(std::runtime_error("Closed error"));
+    }
+    return _impl->get_free_page();
+}
+
+seastar::future<page> file::get_or_create_page(page_id id) const {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::make_exception_future<page>(std::runtime_error("Closed error"));
+    }
+    return _impl->get_or_create_page(id);
+}
+
+seastar::future<> file::unlink_pages_from(page_id id) const {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return seastar::make_exception_future<>(std::runtime_error("Closed error"));
+    }
+    return _impl->unlink_pages_from(id);
+}
+
+seastar::future<> file::write(page first, string data) const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
         return seastar::now();
@@ -353,7 +388,7 @@ seastar::future<> file::write(page first, string data) {
     return _impl->write(std::move(first), std::move(data));
 }
 
-seastar::future<string> file::read(page first) {
+seastar::future<string> file::read(page first) const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
         return seastar::make_ready_future<string>();
@@ -361,12 +396,20 @@ seastar::future<string> file::read(page first) {
     return _impl->read(std::move(first));
 }
 
-seastar::future<> file::unlink_pages_from(page first) {
+seastar::future<> file::unlink_pages_from(page first) const {
     if (!_impl || !_impl->is_open()) {
         SPIDERDB_LOGGER_WARN("File already closed");
         return seastar::now();
     }
     return _impl->unlink_pages_from(std::move(first));
+}
+
+void file::increase_page_count() const noexcept {
+    if (!_impl || !_impl->is_open()) {
+        SPIDERDB_LOGGER_WARN("File already closed");
+        return;
+    }
+    _impl->increase_page_count();
 }
 
 }

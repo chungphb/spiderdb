@@ -33,6 +33,7 @@ public:
     node_impl() = delete;
     node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::weak_ptr<node_impl>&& parent);
     ~node_impl() = default;
+    void set_parent_node(seastar::weak_ptr<node_impl>&& parent) noexcept;
     seastar::future<> load();
     seastar::future<> flush();
     seastar::future<> add(string&& key, data_pointer ptr);
@@ -94,16 +95,18 @@ public:
     // Getters and setters
     node_id get_id() const noexcept;
     seastar::weak_ptr<node_impl> get_pointer() const noexcept;
+    page get_page() const;
     const std::vector<string>& get_key_list() const;
     const std::vector<pointer>& get_pointer_list() const;
+    node_id get_parent_node() const noexcept;
     node_id get_next_node() const noexcept;
     node_id get_prev_node() const noexcept;
     const string& get_high_key() const;
-    node_id get_parent_node() const noexcept;
+    void set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept;
     void set_next_node(node_id next) const noexcept;
     void set_prev_node(node_id prev) const noexcept;
     void set_high_key(string&& high_key) const noexcept;
-    void set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept;
+    void mark_dirty() const noexcept;
 
     // APIs
     seastar::future<> load() const;

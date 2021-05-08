@@ -57,6 +57,7 @@ private:
     seastar::future<> write(page first, string data);
     seastar::future<string> read(page first);
     seastar::future<> unlink_pages_from(page first);
+    void increase_page_count() noexcept;
 
 private:
     const std::string _name;
@@ -69,6 +70,7 @@ private:
 };
 
 struct node_impl;
+struct btree_impl;
 
 struct file {
 public:
@@ -79,18 +81,24 @@ public:
     file(file&& other_file) noexcept;
     file& operator=(const file& other_file);
     file& operator=(file&& other_file) noexcept;
+    const file_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
     seastar::future<page_id> write(string data) const;
     seastar::future<string> read(page_id id) const;
     void log() const noexcept;
-    file_config get_config() const noexcept;
     friend node_impl;
+    friend btree_impl;
 
 private:
-    seastar::future<> write(page first, string data);
-    seastar::future<string> read(page first);
-    seastar::future<> unlink_pages_from(page first);
+    seastar::future<> flush() const;
+    seastar::future<page> get_free_page() const;
+    seastar::future<page> get_or_create_page(page_id id) const;
+    seastar::future<> unlink_pages_from(page_id id) const;
+    seastar::future<> write(page first, string data) const;
+    seastar::future<string> read(page first) const;
+    seastar::future<> unlink_pages_from(page first) const;
+    void increase_page_count() const noexcept;
 
 private:
     seastar::lw_shared_ptr<file_impl> _impl;

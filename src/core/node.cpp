@@ -42,6 +42,16 @@ node_impl::node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::
 
 }
 
+void node_impl::set_parent_node(seastar::weak_ptr<node_impl>&& parent) noexcept {
+    _parent = std::move(parent);
+    if (_parent) {
+        if (_parent->_page.get_id() != _header._parent) {
+            _header._parent = _parent->_page.get_id();
+            _dirty = true;
+        }
+    }
+}
+
 seastar::future<> node_impl::load() {
     if (!_btree) {
         return seastar::make_exception_future<>(std::runtime_error("Closed error"));
@@ -819,6 +829,13 @@ seastar::weak_ptr<node_impl> node::get_pointer() const noexcept {
     return _impl->weak_from_this();
 }
 
+page node::get_page() const {
+    if (!_impl) {
+        throw std::runtime_error("Invalid node");
+    }
+    return _impl->_page;
+}
+
 const std::vector<string>& node::get_key_list() const {
     if (!_impl) {
         throw std::runtime_error("Invalid node");
@@ -831,6 +848,13 @@ const std::vector<pointer>& node::get_pointer_list() const {
         throw std::runtime_error("Invalid node");
     }
     return _impl->_pointers;
+}
+
+node_id node::get_parent_node() const noexcept {
+    if (!_impl) {
+        return null_node;
+    }
+    return _impl->_header._parent;
 }
 
 node_id node::get_next_node() const noexcept {
@@ -854,11 +878,11 @@ const string& node::get_high_key() const {
     return _impl->_high_key;
 }
 
-node_id node::get_parent_node() const noexcept {
+void node::set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept {
     if (!_impl) {
-        return null_node;
+        return;
     }
-    return _impl->_header._parent;
+    _impl->set_parent_node(std::move(parent));
 }
 
 void node::set_next_node(node_id next) const noexcept {
@@ -885,11 +909,10 @@ void node::set_high_key(string&& high_key) const noexcept {
     _impl->_dirty = true;
 }
 
-void node::set_parent_node(seastar::weak_ptr<node_impl>&& parent) const noexcept {
+void node::mark_dirty() const noexcept {
     if (!_impl) {
         return;
     }
-    _impl->_parent = std::move(parent);
     _impl->_dirty = true;
 }
 
