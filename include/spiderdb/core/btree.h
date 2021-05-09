@@ -78,7 +78,7 @@ public:
     seastar::future<> add(string&& key, data_pointer ptr) const;
     seastar::future<> remove(string&& key) const;
     seastar::future<data_pointer> find(string&& key) const;
-    void log() const noexcept;
+    void log() const;
 
 private:
     seastar::lw_shared_ptr<btree_impl> _impl;

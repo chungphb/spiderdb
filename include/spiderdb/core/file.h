@@ -86,7 +86,7 @@ public:
     seastar::future<> close() const;
     seastar::future<page_id> write(string data) const;
     seastar::future<string> read(page_id id) const;
-    void log() const noexcept;
+    void log() const;
 
 private:
     seastar::lw_shared_ptr<file_impl> _impl;

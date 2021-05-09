@@ -75,24 +75,24 @@ public:
     page& operator=(page&& other_page) noexcept;
 
     // Getters and setters
-    page_id get_id() const noexcept;
-    seastar::weak_ptr<page_impl> get_pointer() const noexcept;
-    seastar::shared_ptr<page_header> get_header() const noexcept;
-    uint32_t get_work_size() const noexcept;
-    uint32_t get_record_length() const noexcept;
-    page_id get_next_page() const noexcept;
-    page_type get_type() const noexcept;
-    void set_header(seastar::shared_ptr<page_header> header) noexcept;
-    void set_record_length(uint32_t record_len) noexcept;
-    void set_next_page(page_id next) noexcept;
-    void set_type(page_type type) noexcept;
+    page_id get_id() const;
+    seastar::weak_ptr<page_impl> get_pointer() const;
+    seastar::shared_ptr<page_header> get_header() const;
+    uint32_t get_work_size() const;
+    uint32_t get_record_length() const;
+    page_id get_next_page() const;
+    page_type get_type() const;
+    void set_header(seastar::shared_ptr<page_header> header);
+    void set_record_length(uint32_t record_len);
+    void set_next_page(page_id next);
+    void set_type(page_type type);
 
     // APIs
     seastar::future<> load(seastar::file file);
     seastar::future<> flush(seastar::file file);
     seastar::future<> write(seastar::simple_memory_input_stream& is);
     seastar::future<> read(seastar::simple_memory_output_stream& os);
-    void log() const noexcept;
+    void log() const;
 
 private:
     seastar::lw_shared_ptr<page_impl> _impl;

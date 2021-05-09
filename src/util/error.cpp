@@ -24,13 +24,15 @@ std::string format_error_message(error_code code, const std::string& msg) {
 }
 
 spiderdb_error::spiderdb_error(error_code code)
-    : spiderdb_error{code, ""} {}
+        : spiderdb_error{code, ""} {}
 
 spiderdb_error::spiderdb_error(error_code code, const std::string& msg)
-    : std::runtime_error(format_error_message(code, msg)), _code{code} {}
+        : std::runtime_error(format_error_message(code, msg)), _code{code} {}
 
 error_code spiderdb_error::get_error_code() const noexcept {
     return _code;
 }
+
+cache_error::cache_error(const std::string& msg) : std::runtime_error(msg) {}
 
 }

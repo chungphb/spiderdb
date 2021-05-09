@@ -29,7 +29,7 @@ public:
             return;
         }
         if (!data) {
-            throw std::runtime_error("Non-zero length empty string");
+            throw std::invalid_argument("Non-zero length empty string");
         }
         _data = static_cast<char_t*>(std::malloc(sizeof(char_t) * len));
         if (!_data) {
@@ -44,7 +44,7 @@ public:
             return;
         }
         if (!data) {
-            throw std::runtime_error("Non-zero length empty string");
+            throw std::invalid_argument("Non-zero length empty string");
         }
         _data = static_cast<char_t*>(std::malloc(sizeof(char_t) * len));
         if (!_data) {
@@ -83,7 +83,7 @@ public:
         str._len = 0;
     }
 
-    basic_string<char_t>& operator=(basic_string&& str) {
+    basic_string<char_t>& operator=(basic_string&& str) noexcept {
         if (this != &str) {
             this->~basic_string();
             new (this) basic_string(std::move(str));
@@ -119,25 +119,25 @@ public:
 
     char_t& operator[](size_t id) {
         if (!_data) {
-            throw std::runtime_error("Invalid access");
+            throw std::out_of_range("Access an empty string");
         }
         if (id < 0 || id >= _len) {
-            throw std::runtime_error("Invalid access");
+            throw std::out_of_range("Invalid access to string");
         }
         return _data[id];
     }
 
     const char_t& operator[](size_t id) const {
         if (!_data) {
-            throw std::runtime_error("Invalid access");
+            throw std::out_of_range("Access an empty string");
         }
         if (id < 0 || id >= _len) {
-            throw std::runtime_error("Invalid access");
+            throw std::out_of_range("Invalid access to string");
         }
         return _data[id];
     }
 
-    const bool operator==(const basic_string<char_t>& str) const {
+    bool operator==(const basic_string<char_t>& str) const {
         if (_len != str._len) {
             return false;
         }
@@ -152,11 +152,11 @@ public:
         return true;
     }
 
-    const bool operator!=(const basic_string<char_t>& str) const {
+    bool operator!=(const basic_string<char_t>& str) const {
         return !operator==(str);
     }
 
-    const bool operator<(const basic_string<char_t>& str) const {
+    bool operator<(const basic_string<char_t>& str) const {
         const auto min_len = std::min(_len, str._len);
         for (size_t id = 0; id < min_len; ++id) {
             if (_data[id] < str._data[id]) {
@@ -169,11 +169,11 @@ public:
         return _len < str._len;
     }
 
-    const bool operator>=(const basic_string<char_t>& str) const {
+    bool operator>=(const basic_string<char_t>& str) const {
         return !operator<(str);
     }
 
-    const bool operator>(const basic_string<char_t>& str) const {
+    bool operator>(const basic_string<char_t>& str) const {
         const auto min_len = std::min(_len, str._len);
         for (size_t id = 0; id < min_len; ++id) {
             if (_data[id] > str._data[id]) {
@@ -186,7 +186,7 @@ public:
         return _len > str._len;
     }
 
-    const bool operator<=(const basic_string<char_t>& str) const {
+    bool operator<=(const basic_string<char_t>& str) const {
         return !operator>(str);
     }
 

@@ -4,6 +4,7 @@
 
 #define SPIDERDB_USING_MASTER_TEST_SUITE
 #include <spiderdb/core/file.h>
+#include <spiderdb/util/error.h>
 #include <spiderdb/testing/test_case.h>
 #include <boost/iterator/counting_iterator.hpp>
 
@@ -30,14 +31,26 @@ SPIDERDB_TEST_CASE(test_one_file_open_without_closing) {
 
 SPIDERDB_TEST_CASE(test_one_file_close_without_opening) {
     spiderdb::file file{DATA_FILE};
-    return file.close().finally([file] {});
+    return file.close().handle_exception([file](auto ex) {
+        try {
+            std::rethrow_exception(ex);
+        } catch (spiderdb::spiderdb_error& err) {
+            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+        }
+    });
 }
 
 SPIDERDB_TEST_CASE(test_one_file_multiple_consecutive_opens_and_one_close) {
     using it = boost::counting_iterator<int>;
     spiderdb::file file{DATA_FILE};
     return seastar::do_for_each(it{0}, it{5}, [file](int i) {
-        return file.open();
+        return file.open().handle_exception([](auto ex) {
+            try {
+                std::rethrow_exception(ex);
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
+            }
+        });
     }).then([file] {
         return file.close().finally([file] {});
     });
@@ -47,7 +60,13 @@ SPIDERDB_TEST_CASE(test_one_file_multiple_concurrent_opens_and_one_close) {
     using it = boost::counting_iterator<int>;
     spiderdb::file file{DATA_FILE};
     return seastar::parallel_for_each(it{0}, it{5}, [file](int i) {
-        return file.open();
+        return file.open().handle_exception([](auto ex) {
+            try {
+                std::rethrow_exception(ex);
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
+            }
+        });
     }).then([file] {
         return file.close().finally([file] {});
     });
@@ -58,7 +77,13 @@ SPIDERDB_TEST_CASE(test_one_file_one_open_and_multiple_consecutive_closes) {
     spiderdb::file file{DATA_FILE};
     return file.open().then([file] {
         return seastar::do_for_each(it{0}, it{5}, [file](int i) {
-            return file.close().finally([file] {});
+            return file.close().handle_exception([file](auto ex) {
+                try {
+                    std::rethrow_exception(ex);
+                } catch (spiderdb::spiderdb_error& err) {
+                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+                }
+            });
         });
     });
 }
@@ -68,7 +93,13 @@ SPIDERDB_TEST_CASE(test_one_file_one_open_and_multiple_concurrent_closes) {
     spiderdb::file file{DATA_FILE};
     return file.open().then([file] {
         return seastar::parallel_for_each(it{0}, it{5}, [file](int i) {
-            return file.close().finally([file] {});
+            return file.close().handle_exception([file](auto ex) {
+                try {
+                    std::rethrow_exception(ex);
+                } catch (spiderdb::spiderdb_error& err) {
+                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+                }
+            });
         });
     });
 }
@@ -87,8 +118,20 @@ SPIDERDB_TEST_CASE(test_one_file_multiple_concurrent_opens_and_closes) {
     using it = boost::counting_iterator<int>;
     spiderdb::file file{DATA_FILE};
     return seastar::parallel_for_each(it{0}, it{5}, [file](int i) {
-        return file.open().then([file] {
-            return file.close().finally([file] {});
+        return file.open().handle_exception([](auto ex) {
+            try {
+                std::rethrow_exception(ex);
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
+            }
+        }).then([file] {
+            return file.close().handle_exception([file](auto ex) {
+                try {
+                    std::rethrow_exception(ex);
+                } catch (spiderdb::spiderdb_error& err) {
+                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+                }
+            });
         });
     });
 }
@@ -146,7 +189,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, file_test_fixture) {
     return file.open().then([file] {
         spiderdb::string str;
         return file.write(str).then([](auto page_id) {
-            SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+            SPIDERDB_REQUIRE(false);
+        }).handle_exception([](auto ex) {
+            try {
+                std::rethrow_exception(ex);
+            } catch (std::invalid_argument& err) {
+                SPIDERDB_REQUIRE(strcmp(err.what(), "Write empty data") == 0);
+            }
         });
     }).finally([file] {
         return file.close().finally([file] {});
@@ -159,7 +208,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, file_test_fixture) {
     spiderdb::file file{DATA_FILE, config};
     spiderdb::string str = std::move(generate_data('0'));
     return file.write(str).then([](auto page_id) {
-        SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+        SPIDERDB_REQUIRE(false);
+    }).handle_exception([](auto ex) {
+        try {
+            std::rethrow_exception(ex);
+        } catch (spiderdb::spiderdb_error& err) {
+            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+        }
     }).finally([file] {});
 }
 
@@ -172,7 +227,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, file_test_fixture) {
     }).then([file] {
         spiderdb::string str = std::move(generate_data('0'));
         return file.write(str).then([](auto page_id) {
-            SPIDERDB_CHECK_MESSAGE(page_id == spiderdb::null_page, "Wrong page");
+            SPIDERDB_REQUIRE(false);
+        }).handle_exception([](auto ex) {
+            try {
+                std::rethrow_exception(ex);
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+            }
         }).finally([file] {});
     });
 }
@@ -262,19 +323,19 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_invalid_pages, file_test_fixture) {
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
         return file.read(spiderdb::null_page).then_wrapped([](auto fut) {
-            SPIDERDB_REQUIRE_MESSAGE(fut.failed(), "Invalid access");
+            SPIDERDB_REQUIRE(fut.failed());
             try {
                 std::rethrow_exception(fut.get_exception());
-            } catch (std::runtime_error& err) {
-                SPIDERDB_REQUIRE(strcmp(err.what(), "Invalid access") == 0);
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::invalid_page);
             }
         }).then([file] {
             return file.read(spiderdb::page_id{INT64_MAX}).then_wrapped([](auto fut) {
-                SPIDERDB_REQUIRE_MESSAGE(fut.failed(), "Invalid access");
+                SPIDERDB_REQUIRE(fut.failed());
                 try {
                     std::rethrow_exception(fut.get_exception());
-                } catch (std::runtime_error& err) {
-                    SPIDERDB_REQUIRE(strcmp(err.what(), "Invalid access") == 0);
+                } catch (spiderdb::spiderdb_error& err) {
+                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::invalid_page);
                 }
             });
         });
@@ -287,8 +348,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_before_opening, file_test_fixture) {
     spiderdb::file_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
-    return file.read(spiderdb::page_id{0}).then([](auto res) {
-        SPIDERDB_CHECK_MESSAGE(res.empty(), "Wrong result");
+    return file.read(spiderdb::page_id{0}).then_wrapped([](auto fut) {
+        SPIDERDB_REQUIRE(fut.failed());
+        try {
+            std::rethrow_exception(fut.get_exception());
+        } catch (spiderdb::spiderdb_error& err) {
+            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+        }
     }).finally([file] {});
 }
 
@@ -299,8 +365,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_after_closing, file_test_fixture) {
     return file.open().then([file] {
         return file.close();
     }).then([file] {
-        return file.read(spiderdb::page_id{0}).then([](auto res) {
-            SPIDERDB_CHECK_MESSAGE(res.empty(), "Wrong result");
+        return file.read(spiderdb::page_id{0}).then_wrapped([](auto fut) {
+            SPIDERDB_REQUIRE(fut.failed());
+            try {
+                std::rethrow_exception(fut.get_exception());
+            } catch (spiderdb::spiderdb_error& err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+            }
         }).finally([file] {});
     });
 }

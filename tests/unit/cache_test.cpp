@@ -443,8 +443,8 @@ SPIDERDB_TEST_CASE(test_empty_cache) {
                 SPIDERDB_REQUIRE_MESSAGE(fut.failed(), "Key {} found", key);
                 try {
                     std::rethrow_exception(fut.get_exception());
-                } catch (std::runtime_error& err) {
-                    SPIDERDB_REQUIRE(strcmp(err.what(), "Cache error") == 0);
+                } catch (spiderdb::cache_error& err) {
+                    SPIDERDB_REQUIRE(strcmp(err.what(), "Item not exists") == 0);
                 }
             });
         }).then([cache] {
@@ -492,8 +492,8 @@ SPIDERDB_TEST_CASE(test_concurrent_access) {
                 } else {
                     try {
                         std::rethrow_exception(fut.get_exception());
-                    } catch (std::runtime_error& err) {
-                        SPIDERDB_REQUIRE(strcmp(err.what(), "Cache error") == 0);
+                    } catch (spiderdb::cache_error& err) {
+                        SPIDERDB_REQUIRE(strcmp(err.what(), "Item not exists") == 0);
                     }
                 }
             });

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <spiderdb/util/error.h>
 #include <seastar/core/future.hh>
 #include <seastar/core/future-util.hh>
 #include <seastar/core/shared_mutex.hh>
@@ -50,7 +51,7 @@ public:
         return seastar::with_lock(_lock, [this, key{std::forward<key_t>(key)}] {
             auto iterator_it = _iterators.find(key);
             if (iterator_it == _iterators.end()) {
-                return seastar::make_exception_future<value_t>(std::runtime_error("Cache error"));
+                return seastar::make_exception_future<value_t>(cache_error{"Item not exists"});
             }
             _items.splice(_items.begin(), _items, iterator_it->second);
             return seastar::make_ready_future<value_t>(iterator_it->second->second);
