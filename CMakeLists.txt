@@ -23,6 +23,7 @@ set(SPIDERDB_HEADERS
     "include/spiderdb/util/string.h"
     "include/spiderdb/util/cache.h"
     "include/spiderdb/util/log.h"
+    "include/spiderdb/util/error.h"
     "include/spiderdb/util/data_types.h"
 )
 set(SPIDERDB_SOURCES
@@ -31,6 +32,7 @@ set(SPIDERDB_SOURCES
     "src/core/page.cpp"
     "src/core/file.cpp"
     "src/util/log.cpp"
+    "src/util/error.cpp"
 )
 add_library(spiderdb STATIC ${SPIDERDB_HEADERS} ${SPIDERDB_SOURCES})
 target_include_directories(spiderdb PUBLIC include)
