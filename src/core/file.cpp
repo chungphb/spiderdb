@@ -93,12 +93,15 @@ seastar::future<> file_impl::open() {
 }
 
 seastar::future<> file_impl::flush() {
-    return _file_header->flush(_file);
+    return _file_header->flush(_file).then([this] {
+        SPIDERDB_LOGGER_INFO("Flushed file: {}", _name);
+        log();
+    });
 }
 
 seastar::future<> file_impl::close() {
     return flush().then([this] {
-        if (!is_open()) {
+        if (!file_impl::is_open()) {
             return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
         }
         auto file = std::move(_file);

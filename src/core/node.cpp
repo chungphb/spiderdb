@@ -169,6 +169,7 @@ seastar::future<> node_impl::flush() {
         _parent = nullptr;
         _dirty = false;
         SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Flushed", _page.get_id());
+        log();
     });
 }
 
@@ -593,7 +594,6 @@ seastar::future<string> node_impl::demote(node_id left_child, node_id right_chil
 }
 
 void node_impl::log() const {
-    _page.log();
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of keys: ", _header->_key_count);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prefix length: ", _header->_prefix_len);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _header->_parent);

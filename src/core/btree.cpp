@@ -54,6 +54,7 @@ seastar::future<> btree_impl::open() {
         _cache = std::make_unique<cache<node_id, node>>(_config.n_cached_nodes, std::move(evictor));
         return file_impl::get_or_create_page(_btree_header->_root).then([this](auto root) {
             _btree_header->_page_count++;
+            _btree_header->_dirty = true;
             _root = node{root, get_pointer()};
             return seastar::futurize_invoke([this, root] {
                 switch (root.get_type()) {
@@ -79,11 +80,13 @@ seastar::future<> btree_impl::open() {
 }
 
 seastar::future<> btree_impl::flush() {
-    return seastar::parallel_for_each(_cache->get_all_items(), [this](auto item) {
+    return seastar::parallel_for_each(_cache->get_all_items(), [](auto item) {
         auto node = item.second;
         return node.flush().finally([node] {});
     }).then([this] {
         return _cache->clear();
+    }).then([this] {
+        return file_impl::flush();
     });
 }
 
@@ -92,9 +95,7 @@ seastar::future<> btree_impl::close() {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
     }
     auto root = std::move(_root);
-    return root.flush().then([this] {
-        return flush();
-    }).finally([this, root] {
+    return root.flush().finally([this, root] {
         return file_impl::close().then([] {
             SPIDERDB_LOGGER_INFO("Closed B-Tree");
         });
@@ -159,7 +160,9 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
 }
 
 seastar::future<> btree_impl::cache_node(node node) {
-    return _cache->put(node.get_id(), node);
+    return _cache->put(node.get_id(), node).then([node] {
+        SPIDERDB_LOGGER_TRACE("Node {:0>12} - Cached", node.get_id());
+    });
 }
 
 void btree_impl::log() const noexcept {
@@ -168,7 +171,7 @@ void btree_impl::log() const noexcept {
 }
 
 bool btree_impl::is_open() const noexcept {
-    return (bool)_root;
+    return (bool)_root && file_impl::is_open();
 }
 
 seastar::shared_ptr<file_header> btree_impl::get_new_file_header() {
