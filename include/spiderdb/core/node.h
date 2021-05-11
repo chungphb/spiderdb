@@ -41,7 +41,7 @@ public:
     seastar::future<node> get_parent();
     seastar::future<node> get_child(uint32_t id);
     void update_parent(seastar::weak_ptr<node_impl>&& parent) noexcept;
-    int64_t binary_search(const string& key, uint32_t low, uint32_t high);
+    int64_t binary_search(const string& key, int64_t low, int64_t high);
     seastar::future<> split();
     bool need_split() noexcept;
     seastar::future<> promote(string&& promoted_key, node_id left_child, node_id right_child);
@@ -115,7 +115,7 @@ public:
     seastar::future<> remove(string&& key) const;
     seastar::future<data_pointer> find(string&& key) const;
     void update_parent(seastar::weak_ptr<node_impl>&& parent) const;
-    int64_t binary_search(const string& key, int32_t low, int32_t high) const;
+    int64_t binary_search(const string& key, int64_t low, int64_t high) const;
     seastar::future<> split() const;
     bool need_split() const;
     seastar::future<> promote(string&& key, node_id left_child, node_id right_child) const;

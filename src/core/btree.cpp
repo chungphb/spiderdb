@@ -237,7 +237,10 @@ seastar::future<> btree::add(string&& key, data_pointer ptr) const {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(std::invalid_argument("Empty key"));
+        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+    }
+    if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->get_config().min_keys_on_each_node) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_long});
     }
     return _impl->add(std::move(key), ptr);
 }
@@ -250,7 +253,7 @@ seastar::future<> btree::remove(string&& key) const {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(std::invalid_argument("Empty key"));
+        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
     }
     return _impl->remove(std::move(key));
 }
@@ -263,7 +266,7 @@ seastar::future<data_pointer> btree::find(string&& key) const {
         return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::file_already_closed});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<data_pointer>(std::invalid_argument("Empty key"));
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::empty_key});
     }
     return _impl->find(std::move(key));
 }

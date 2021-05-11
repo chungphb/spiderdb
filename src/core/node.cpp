@@ -114,6 +114,7 @@ seastar::future<> node_impl::load() {
         _data_len = calculate_data_length(true);
         _loaded = true;
         SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Loaded", _page.get_id());
+        log();
     });
 }
 
@@ -134,7 +135,7 @@ seastar::future<> node_impl::flush() {
     // Flush keys
     for (size_t i = 0; i < _keys.size(); ++i) {
         // Flush key length
-        uint32_t key_len = _keys[i].length();
+        uint32_t key_len = _keys[i].length() - _prefix.length();
         char key_len_byte_arr[sizeof(key_len)];
         memcpy(key_len_byte_arr, &key_len, sizeof(key_len));
         os.write(key_len_byte_arr, sizeof(key_len));
@@ -190,7 +191,7 @@ seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
                 if (id >= 0) {
                     return seastar::make_exception_future<>(spiderdb_error{error_code::key_exists});
                 }
-                id = -id;
+                id = - (id + 1);
                 _keys.insert(_keys.begin() + id, key);
                 _pointers.insert(_pointers.begin() + id, pointer{.pointer = ptr});
                 update_metadata();
@@ -330,9 +331,9 @@ void node_impl::update_parent(seastar::weak_ptr<node_impl>&& parent) noexcept {
     }
 }
 
-int64_t node_impl::binary_search(const string& key, uint32_t low, uint32_t high) {
+int64_t node_impl::binary_search(const string& key, int64_t low, int64_t high) {
     while (low <= high) {
-        uint32_t mid = (low + high) / 2;
+        int64_t mid = (low + high) / 2;
         if (key < _keys[mid]) {
             high = mid - 1;
         } else if (key > _keys[mid]) {
@@ -381,7 +382,7 @@ seastar::future<> node_impl::split() {
                     left.set_high_key(_keys[midpoint].clone());
                     right.set_high_key(_high_key.clone());
                     return link_siblings(left, right).then([this, midpoint, left, right] {
-                        SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {} + {}", _page.get_id(), left.get_id(), right.get_id());
+                        SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {:0>12} + {:0>12}", _page.get_id(), left.get_id(), right.get_id());
                         _page.set_type(node_type::internal);
                         std::vector<string> keys{_keys[midpoint].clone()};
                         std::vector<pointer> pointers{pointer{.child = left.get_id()}, pointer{.child = right.get_id()}};
@@ -397,7 +398,7 @@ seastar::future<> node_impl::split() {
         _high_key = separator.clone();
         return link_siblings(shared_from_this(), sibling).then([this, sibling] {
             return get_parent().then([this, sibling](auto parent) {
-                SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {}", _page.get_id(), sibling.get_id());
+                SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {:0>12}", _page.get_id(), sibling.get_id());
                 sibling.update_parent(parent.get_pointer());
                 return parent.promote(_high_key.clone(), _page.get_id(), sibling.get_id()).then([this, sibling, parent] {
                     return seastar::when_all_succeed(cache(parent), cache(shared_from_this()), cache(sibling)).discard_result();
@@ -519,7 +520,7 @@ seastar::future<> node_impl::merge() {
                 left_ptr->update_data(std::move(keys), std::move(pointers));
                 left_ptr->set_high_key(right_high_key.clone());
                 return left_ptr->become_parent().then([this, left_ptr, right_ptr] {
-                    SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Merged {} to {}", _page.get_id(), left_ptr->get_id(), right_ptr->get_id());
+                    SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Merged {:0>12} to {:0>12}", _page.get_id(), left_ptr->get_id(), right_ptr->get_id());
                     if (right_ptr->get_next_node() == null_node) {
                         left_ptr->set_next_node(null_node);
                         return seastar::now();
@@ -673,7 +674,7 @@ seastar::future<> node_impl::become_parent() {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
     }
     if (_page.get_type() != node_type::internal) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
+        return seastar::now();
     }
     return seastar::parallel_for_each(_pointers, [this](auto pointer) {
         return _btree->get_node(pointer.child, weak_from_this()).then([this](auto child) {
@@ -971,7 +972,7 @@ void node::update_parent(seastar::weak_ptr<node_impl>&& parent) const {
     _impl->update_parent(std::move(parent));
 }
 
-int64_t node::binary_search(const string& key, int32_t low, int32_t high) const {
+int64_t node::binary_search(const string& key, int64_t low, int64_t high) const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_node};
     }

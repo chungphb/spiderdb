@@ -18,8 +18,10 @@ namespace spiderdb {
     FUNC(invalid_page_type, 301)           \
     FUNC(key_exists, 302)                  \
     FUNC(key_not_exists, 303)              \
-    FUNC(exceeded_max_key_count, 304)      \
-    FUNC(child_not_exists, 305)            \
+    FUNC(empty_key, 304)                   \
+    FUNC(key_too_long, 305)                \
+    FUNC(exceeded_max_key_count, 306)      \
+    FUNC(child_not_exists, 350)            \
     FUNC(invalid_btree, 400)
 
 #define SPIDERDB_GENERATE_ERROR_CODE(error, code) error = code,
