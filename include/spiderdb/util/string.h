@@ -20,6 +20,7 @@ struct basic_string {
         std::is_same_v<char_t, int8_t>,
         "Not supported"
     );
+    using char_type = char_t;
 
 public:
     basic_string() = default;
@@ -137,6 +138,17 @@ public:
         return _data[id];
     }
 
+    basic_string operator+(const basic_string& str) const {
+        basic_string res{size() + str.size(), 0};
+        memcpy(res.str(), c_str(), length());
+        memcpy(res.str() + length(), str.c_str(), str.length());
+        return res;
+    }
+
+    basic_string operator+=(const basic_string& str) {
+        return *this = *this + str;
+    }
+
     bool operator==(const basic_string<char_t>& str) const {
         if (_len != str._len) {
             return false;
@@ -212,7 +224,64 @@ private:
     size_t _len = 0;
 };
 
+namespace internal {
+
+template <typename string_t, typename value_t>
+string_t to_string_sprintf(value_t val, const char* fmt) {
+    char tmp[sizeof(val) * 3 + 2];
+    auto len = std::sprintf(tmp, fmt, val);
+    using char_t = typename string_t::char_type;
+    return string_t{reinterpret_cast<char_t*>(tmp), static_cast<size_t>(len)};
+}
+
+template <typename string_t>
+string_t to_string(int val) {
+    return to_string_sprintf<string_t>(val, "%d");
+}
+
+template <typename string_t>
+string_t to_string(unsigned val) {
+    return to_string_sprintf<string_t>(val, "%u");
+}
+
+template <typename string_t>
+string_t to_string(long val) {
+    return to_string_sprintf<string_t>(val, "%ld");
+}
+
+template <typename string_t>
+string_t to_string(unsigned long val) {
+    return to_string_sprintf<string_t>(val, "%lu");
+}
+
+template <typename string_t>
+string_t to_string(long long val) {
+    return to_string_sprintf<string_t>(val, "%lld");
+}
+
+template <typename string_t>
+string_t to_string(unsigned long long val) {
+    return to_string_sprintf<string_t>(val, "%llu");
+}
+
+template <typename string_t>
+string_t to_string(float val) {
+    return to_string_sprintf<string_t>(val, "%g");
+}
+
+template <typename string_t>
+string_t to_string(double val) {
+    return to_string_sprintf<string_t>(val, "%g");
+}
+
+}
+
 using string = basic_string<char>;
+
+template <typename string_t = string, typename value_t>
+string_t to_string(value_t val) {
+    return internal::to_string<string_t>(val);
+}
 
 }
 
