@@ -58,8 +58,9 @@ private:
     seastar::future<> become_parent();
     void update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers);
     void update_metadata();
-    size_t calculate_data_length(bool reset = false) noexcept;
-    seastar::future<> invalidate();
+    void calculate_data_length() noexcept;
+    seastar::future<> destroy();
+    seastar::future<> remove_child(node_id child);
     seastar::future<> clean();
     bool is_valid() const noexcept;
 
@@ -124,6 +125,9 @@ public:
     seastar::future<string> demote(node_id left_child, node_id right_child) const;
     seastar::future<> become_parent() const;
     void update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers) const;
+    void update_metadata() const;
+    seastar::future<> destroy() const;
+    seastar::future<> remove_child(node_id child) const;
     seastar::future<> clean() const;
     void log() const;
 

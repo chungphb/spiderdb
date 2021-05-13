@@ -612,3 +612,285 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
 }
 
 SPIDERDB_TEST_SUITE_END()
+
+SPIDERDB_TEST_SUITE(btree_test_remove)
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_consecutively, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_concurrently, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_consecutively, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            generator->shuffle_data();
+            return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_concurrently, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_records_with_long_key, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 1000);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 1000);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.remove(std::move(record.first)).then_wrapped([](auto fut) {
+                        SPIDERDB_REQUIRE(fut.failed());
+                        try {
+                            std::rethrow_exception(fut.get_exception());
+                        } catch (spiderdb::spiderdb_error &err) {
+                            SPIDERDB_REQUIRE_MESSAGE(err.get_error_code() == spiderdb::error_code::key_not_exists, "{}", err.get_error_code());
+                        }
+                    });
+                });
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_nonexistent_records, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(10000, 10000, 6);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first)).then_wrapped([](auto fut) {
+                    SPIDERDB_REQUIRE(fut.failed());
+                    try {
+                        std::rethrow_exception(fut.get_exception());
+                    } catch (spiderdb::spiderdb_error &err) {
+                        SPIDERDB_REQUIRE_MESSAGE(err.get_error_code() == spiderdb::error_code::key_not_exists, "{}", err.get_error_code());
+                    }
+                });
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_find_before_opening, btree_test_fixture) {
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    spiderdb::string key{1000, 0};
+    return btree.remove(std::move(key)).then_wrapped([](auto fut) {
+        SPIDERDB_REQUIRE(fut.failed());
+        try {
+            std::rethrow_exception(fut.get_exception());
+        } catch (spiderdb::spiderdb_error &err) {
+            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+        }
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree] {
+        return btree.close();
+    }).then([btree] {
+        spiderdb::string key{1000, 0};
+        return btree.remove(std::move(key)).then_wrapped([](auto fut) {
+            SPIDERDB_REQUIRE(fut.failed());
+            try {
+                std::rethrow_exception(fut.get_exception());
+            } catch (spiderdb::spiderdb_error &err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+            }
+        });
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(10000, 0, 6);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    }).then([btree, generator] {
+        return btree.open().then([btree, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(1000, 0, 6);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        }).finally([btree, generator] {
+            return btree.close().finally([btree] {});
+        });
+    });
+}
+
+SPIDERDB_TEST_SUITE_END()
