@@ -160,9 +160,7 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
 }
 
 seastar::future<> btree_impl::cache_node(node node) {
-    return _cache->put(node.get_id(), node).then([node] {
-        SPIDERDB_LOGGER_TRACE("Node {:0>12} - Cached", node.get_id());
-    });
+    return _cache->put(node.get_id(), node);
 }
 
 void btree_impl::log() const noexcept {

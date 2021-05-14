@@ -258,11 +258,6 @@ seastar::future<data_pointer> node_impl::find(string&& key) {
             return next.find(std::move(key));
         });
     }
-    if (_prev != null_node && key < _keys[0]) {
-        return _btree->get_node(_prev).then([key](auto prev) mutable {
-            return prev.find(std::move(key));
-        });
-    }
     return seastar::futurize_invoke([this, key{std::move(key)}]() mutable {
         auto id = binary_search(key, 0, _keys.size() - 1);
         switch (_page.get_type()) {
@@ -271,7 +266,7 @@ seastar::future<data_pointer> node_impl::find(string&& key) {
                     return seastar::make_ready_future<data_pointer>(null_data_pointer);
                 }
                 id = (id < 0) ? - (id + 1) : (id + 1);
-                return get_child(id).then([key{std::move(key)}](auto child) mutable {
+                return get_child(id).then([key](auto child) mutable {
                     return child.find(std::move(key));
                 });
             }
@@ -697,10 +692,10 @@ void node_impl::update_metadata() {
         auto old_prefix_len = _header->_prefix_len;
         auto calculate_prefix_func = [](string str1, string str2) {
             size_t prefix_len = 0;
-            size_t len = std::max(str1.length(), str2.length());
+            size_t len = std::min(str1.length(), str2.length());
             for (size_t i = 0; i < len; ++i) {
                 if (str1[i] == str2[i]) {
-                    prefix_len++;
+                    ++prefix_len;
                 } else {
                     break;
                 }

@@ -13,6 +13,22 @@ namespace {
 const std::string DATA_FOLDER = "data";
 const std::string DATA_FILE = DATA_FOLDER + "/test.dat";
 
+uint8_t get_number_of_digits(size_t num) {
+    uint8_t n_digits = 0;
+    if (num == 0) {
+        return 1;
+    }
+    while (num != 0) {
+        num /= 10;
+        n_digits++;
+    }
+    return n_digits;
+}
+
+const size_t N_RECORDS = 10000; // 100000;
+const size_t SHORT_KEY_LEN = get_number_of_digits(N_RECORDS) + 1;
+const size_t LONG_KEY_LEN = 1000;
+
 struct btree_test_fixture {
     btree_test_fixture() {
         system(fmt::format("rm {}", DATA_FILE).c_str());
@@ -28,10 +44,10 @@ struct data_generator {
 
 public:
     void generate_sequential_data(size_t n_items, size_t from, size_t key_len) {
-        assert(number_of_digits(from + n_items) + 1 <= key_len);
+        assert(get_number_of_digits(from + n_items) + 1 <= key_len);
         data.reserve(n_items);
         for (size_t i = from; i < from + n_items; ++i) {
-            spiderdb::string key{key_len - number_of_digits(i), '0'};
+            spiderdb::string key{key_len - get_number_of_digits(i), '0'};
             key[0] = 'k';
             key += spiderdb::to_string(i);
             data.push_back({std::move(key), static_cast<spiderdb::data_pointer>(i)});
@@ -61,18 +77,6 @@ public:
         }
         str << "\n";
         SPIDERDB_TEST_MESSAGE("{}", str.str());
-    }
-
-    static constexpr uint8_t number_of_digits(size_t num) {
-        uint8_t n_digits = 0;
-        if (num == 0) {
-            return 1;
-        }
-        while (num != 0) {
-            num /= 10;
-            n_digits++;
-        }
-        return n_digits;
     }
 
 private:
@@ -218,7 +222,7 @@ SPIDERDB_TEST_SUITE(btree_test_add)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_sequential_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -233,7 +237,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_sequential_records_consecutively, b
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_sequential_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -248,7 +252,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_sequential_records_concurrently, bt
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_random_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     generator->shuffle_data();
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
@@ -264,7 +268,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_random_records_consecutively, btree
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_random_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     generator->shuffle_data();
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
@@ -280,7 +284,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_random_records_concurrently, btree_
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_records_with_long_key, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 1000);
+    generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN);
     generator->shuffle_data();
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
@@ -296,7 +300,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_records_with_long_key, btree_test_f
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_multiple_records_with_duplicated_key, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 1000);
+    generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN);
     generator->shuffle_data();
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
@@ -326,7 +330,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_records_with_invalid_key_length, btree_test_
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
     return btree.open().then([btree] {
-        spiderdb::string key{10000, 0};
+        spiderdb::string key{N_RECORDS, 0};
         spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
@@ -356,7 +360,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_before_opening, btree_test_fixture) {
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
-    spiderdb::string key{1000, 0};
+    spiderdb::string key{LONG_KEY_LEN, 0};
     spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
     return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
@@ -375,7 +379,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_after_closing, btree_test_fixture) {
     return btree.open().then([btree] {
         return btree.close();
     }).then([btree] {
-        spiderdb::string key{1000, 0};
+        spiderdb::string key{LONG_KEY_LEN, 0};
         spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
@@ -390,7 +394,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_after_closing, btree_test_fixture) {
 
 SPIDERDB_FIXTURE_TEST_CASE(test_add_after_reopening, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     generator->shuffle_data();
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
@@ -403,7 +407,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_after_reopening, btree_test_fixture) {
         return btree.close().finally([btree] {});
     }).then([btree, generator] {
         generator->clear_data();
-        generator->generate_sequential_data(10000, 10000, 6);
+        generator->generate_sequential_data(N_RECORDS, N_RECORDS, SHORT_KEY_LEN);
         generator->shuffle_data();
         return btree.open().then([btree, generator] {
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
@@ -421,7 +425,7 @@ SPIDERDB_TEST_SUITE(btree_test_find)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -442,7 +446,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_consecutively, 
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -463,7 +467,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_concurrently, b
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -485,7 +489,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_consecutively, btre
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -507,7 +511,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_concurrently, btree
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_records_with_long_key, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 1000);
+    generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -529,16 +533,16 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_records_with_long_key, btree_test_
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_nonexistent_records, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
+    config.log_level = seastar::log_level::trace;
     spiderdb::btree btree{DATA_FILE, config};
     return btree.open().then([btree, generator] {
         return seastar::do_for_each(generator->get_data(), [btree](auto record) {
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(10000, 10000, 6);
+            generator->generate_sequential_data(N_RECORDS, N_RECORDS, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.find(std::move(record.first)).then([](auto res) {
@@ -547,6 +551,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_nonexistent_records, btree_test_fixture) {
             });
         });
     }).finally([btree, generator] {
+        printf("==================== CLOSE ==========================\n");
         return btree.close().finally([btree] {});
     });
 }
@@ -555,7 +560,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_before_opening, btree_test_fixture) {
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
-    spiderdb::string key{1000, 0};
+    spiderdb::string key{LONG_KEY_LEN, 0};
     return btree.find(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
         try {
@@ -573,7 +578,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
     return btree.open().then([btree] {
         return btree.close();
     }).then([btree] {
-        spiderdb::string key{1000, 0};
+        spiderdb::string key{LONG_KEY_LEN, 0};
         return btree.find(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
             try {
@@ -587,7 +592,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -617,7 +622,7 @@ SPIDERDB_TEST_SUITE(btree_test_remove)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -626,7 +631,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_consecutively
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
             }).then([btree, generator] {
@@ -644,7 +649,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_consecutively
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -653,7 +658,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_concurrently,
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
             }).then([btree, generator] {
@@ -671,7 +676,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_concurrently,
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_consecutively, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -680,7 +685,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_consecutively, bt
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
@@ -699,7 +704,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_consecutively, bt
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_concurrently, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -708,7 +713,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_concurrently, btr
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
@@ -727,7 +732,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_concurrently, btr
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_records_with_long_key, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 1000);
+    generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -736,7 +741,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_records_with_long_key, btree_tes
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 1000);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, LONG_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
@@ -755,7 +760,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_records_with_long_key, btree_tes
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -764,7 +769,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixtur
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
@@ -794,7 +799,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixtur
 
 SPIDERDB_FIXTURE_TEST_CASE(test_remove_nonexistent_records, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -803,7 +808,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_nonexistent_records, btree_test_fixture) 
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(10000, 10000, 6);
+            generator->generate_sequential_data(N_RECORDS, N_RECORDS, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first)).then_wrapped([](auto fut) {
@@ -831,7 +836,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_before_opening, btree_test_fixture) {
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
-    spiderdb::string key{1000, 0};
+    spiderdb::string key{LONG_KEY_LEN, 0};
     return btree.remove(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
         try {
@@ -849,7 +854,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
     return btree.open().then([btree] {
         return btree.close();
     }).then([btree] {
-        spiderdb::string key{1000, 0};
+        spiderdb::string key{LONG_KEY_LEN, 0};
         return btree.remove(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
             try {
@@ -863,7 +868,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
 
 SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
-    generator->generate_sequential_data(10000, 0, 6);
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
@@ -876,7 +881,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
     }).then([btree, generator] {
         return btree.open().then([btree, generator] {
             generator->clear_data();
-            generator->generate_sequential_data(1000, 0, 6);
+            generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
                 return btree.remove(std::move(record.first));
