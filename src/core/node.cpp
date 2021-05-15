@@ -65,7 +65,6 @@ seastar::future<> node_impl::load() {
             _prefix = std::move(string{prefix_byte_arr, _header->_prefix_len});
         }
         // Load keys
-        string current_key;
         for (uint32_t i = 0; i < _header->_key_count; ++i) {
             // Load key length
             uint32_t key_len;
@@ -73,17 +72,17 @@ seastar::future<> node_impl::load() {
             is.read(key_len_byte_arr, sizeof(key_len));
             memcpy(&key_len, key_len_byte_arr, sizeof(key_len));
             // Load key
-            char current_key_byte_arr[_header->_prefix_len + key_len];
+            char full_key_byte_arr[_header->_prefix_len + key_len];
             if (_header->_prefix_len > 0) {
-                memcpy(current_key_byte_arr, _prefix.c_str(), _prefix.length());
+                memcpy(full_key_byte_arr, _prefix.c_str(), _prefix.length());
             }
             if (key_len > 0) {
                 char key_byte_arr[key_len];
                 is.read(key_byte_arr, key_len);
-                memcpy(current_key_byte_arr + _header->_prefix_len, key_byte_arr, key_len);
+                memcpy(full_key_byte_arr + _header->_prefix_len, key_byte_arr, key_len);
             }
-            current_key = std::move(string{current_key_byte_arr, static_cast<size_t>(_header->_prefix_len + key_len)});
-            _keys.push_back(std::move(current_key));
+            string full_key{full_key_byte_arr, static_cast<size_t>(_header->_prefix_len + key_len)};
+            _keys.push_back(std::move(full_key));
         }
         // Load pointers
         uint32_t pointer_count = _header->_key_count + (_page.get_type() == node_type::internal ? 1 : 0);

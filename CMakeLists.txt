@@ -15,6 +15,8 @@ if(SpiderDB_TESTING)
 endif()
 
 set(SPIDERDB_HEADERS
+    "include/spiderdb/core/data_page.h"
+    "include/spiderdb/core/storage.h"
     "include/spiderdb/core/node.h"
     "include/spiderdb/core/btree.h"
     "include/spiderdb/core/page.h"
@@ -27,6 +29,8 @@ set(SPIDERDB_HEADERS
     "include/spiderdb/util/data_types.h"
 )
 set(SPIDERDB_SOURCES
+    "src/core/data_page.cpp"
+    "src/core/storage.cpp"
     "src/core/node.cpp"
     "src/core/btree.cpp"
     "src/core/page.cpp"

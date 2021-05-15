@@ -2,9 +2,9 @@
 // Created by chungphb on 3/5/21.
 //
 
-#include <spiderdb/core/page.h>
-
 #pragma once
+
+#include <spiderdb/core/page.h>
 
 namespace spiderdb {
 
@@ -16,13 +16,10 @@ struct node_header : page_header {
 public:
     seastar::future<> write(seastar::temporary_buffer<char> buffer) override;
     seastar::future<> read(seastar::temporary_buffer<char> buffer) override;
-    static constexpr size_t size() noexcept {
-        return sizeof(_parent) + sizeof(_key_count) + sizeof(_prefix_len);
-    }
     friend node_impl;
     friend node;
 
-protected:
+private:
     node_id _parent = null_node;
     uint32_t _key_count = 0;
     uint32_t _prefix_len = 0;
@@ -76,7 +73,7 @@ private:
     node_id _prev = null_node;
     string _prefix;
     string _high_key;
-    size_t _data_len;
+    size_t _data_len = 0;
     seastar::semaphore _lock{1};
     bool _loaded = false;
     bool _dirty = false;

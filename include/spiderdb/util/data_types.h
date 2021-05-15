@@ -21,10 +21,14 @@ union pointer {
     data_pointer pointer;
 };
 
-using node_item = std::optional<std::pair<string, data_pointer>>;
+using value_id = size_t;
 
 enum struct page_type : uint8_t {
-    unused, primary, overflow, internal, leaf
+    unused = 0,
+    overflow = 1,
+    internal = 2,
+    leaf = 3,
+    data = 4
 };
 
 using node_type = page_type;
