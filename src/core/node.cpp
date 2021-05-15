@@ -235,10 +235,13 @@ seastar::future<> node_impl::remove(string&& key) {
                 _pointers.erase(_pointers.begin() + id);
                 update_metadata();
                 _data_len -= key.length() + sizeof(uint32_t) + sizeof(pointer);
-                if (!need_merge()) {
+                if (need_destroy()) {
+                    return destroy();
+                } else if (need_merge()) {
+                    return merge();
+                } else {
                     return seastar::now();
                 }
-                return merge();
             }
             default: {
                 return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
@@ -450,9 +453,6 @@ seastar::future<> node_impl::merge() {
     if (!is_valid()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
     }
-    if (_keys.empty() && _pointers.empty()) {
-        return destroy();
-    }
     auto left_ptr = seastar::make_lw_shared<node>();
     auto right_ptr = seastar::make_lw_shared<node>();
     return seastar::futurize_invoke([this, left_ptr, right_ptr] {
@@ -584,6 +584,73 @@ seastar::future<string> node_impl::demote(node_id left_child, node_id right_chil
     }).then([demoted_key{std::move(demoted_key)}] {
         return seastar::make_ready_future<string>(demoted_key);
     });
+}
+
+seastar::future<> node_impl::destroy() {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+    }
+    if (_page.get_id() == _btree->get_root().get_id()) {
+        _page.set_type(node_type::leaf);
+        return seastar::now();
+    }
+    if (!_keys.empty() || !_pointers.empty()) {
+        return seastar::now();
+    }
+    return get_parent().then([this](auto parent) {
+        return parent.fire(_page.get_id()).then([this, parent] {
+            return cache(parent);
+        });
+    }).then([this] {
+        if (_prev == null_node) {
+            return seastar::now();
+        }
+        return _btree->get_node(_prev).then([this](auto prev) {
+            prev.set_next_node(_next);
+            return cache(prev);
+        });
+    }).then([this] {
+        if (_next == null_node) {
+            return seastar::now();
+        }
+        return _btree->get_node(_next).then([this](auto next) {
+            next.set_prev_node(_prev);
+            return cache(next);
+        });
+    }).then([this] {
+        return clean();
+    }).then([this] {
+        return cache(shared_from_this());
+    });
+}
+
+bool node_impl::need_destroy() noexcept {
+    return _keys.empty() && _pointers.empty();
+}
+
+seastar::future<> node_impl::fire(node_id child) {
+    if (!is_valid()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+    }
+    auto it = std::find_if(_pointers.begin(), _pointers.end(), [child](const auto& pointer) {
+        return pointer.child == child;
+    });
+    if (it == _pointers.end()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::child_not_exists});
+    }
+    auto id = it - _pointers.begin();
+    if (id == 0) {
+        if (!_keys.empty()) {
+            _keys.erase(_keys.begin());
+        }
+    } else if (id - 1 >= 0 && id - 1 < _keys.size()) {
+        _keys.erase(_keys.begin() + id - 1);
+    }
+    _pointers.erase(_pointers.begin() + id);
+    if (!need_destroy()) {
+        return seastar::now();
+    }
+    return destroy();
 }
 
 void node_impl::log() const {
@@ -730,65 +797,6 @@ void node_impl::calculate_data_length() noexcept {
     data_len += sizeof(uint32_t) + _high_key.length();
     data_len += sizeof(node_id) * 2;
     _data_len = data_len;
-}
-
-seastar::future<> node_impl::destroy() {
-    if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
-    }
-    if (_page.get_id() == _btree->get_root().get_id()) {
-        return seastar::now();
-    }
-    if (!_keys.empty() || !_pointers.empty()) {
-        return seastar::now();
-    }
-    return get_parent().then([this](auto parent) {
-        return parent.remove_child(_page.get_id()).then([this, parent] {
-            return cache(parent);
-        });
-    }).then([this] {
-        if (_prev == null_node) {
-            return seastar::now();
-        }
-        return _btree->get_node(_prev).then([this](auto prev) {
-            prev.set_next_node(_next);
-            return cache(prev);
-        });
-    }).then([this] {
-        if (_next == null_node) {
-            return seastar::now();
-        }
-        return _btree->get_node(_next).then([this](auto next) {
-            next.set_prev_node(_prev);
-            return cache(next);
-        });
-    }).then([this] {
-        return clean();
-    }).then([this] {
-        return cache(shared_from_this());
-    });
-}
-
-seastar::future<> node_impl::remove_child(node_id child) {
-    if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
-    }
-    auto it = std::find_if(_pointers.begin(), _pointers.end(), [child](const auto& pointer) {
-        return pointer.child == child;
-    });
-    if (it == _pointers.end()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::child_not_exists});
-    }
-    auto id = it - _pointers.begin();
-    if (id == 0) {
-        if (!_keys.empty()) {
-            _keys.erase(_keys.begin());
-        }
-    } else if (id - 1 >= 0 && id - 1 < _keys.size()) {
-        _keys.erase(_keys.begin() + id - 1);
-    }
-    _pointers.erase(_pointers.begin() + id);
-    return seastar::now();
 }
 
 seastar::future<> node_impl::clean() {
@@ -1033,6 +1041,27 @@ seastar::future<string> node::demote(node_id left_child, node_id right_child) co
     return _impl->demote(left_child, right_child);
 }
 
+seastar::future<> node::destroy() const {
+    if (!_impl) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+    }
+    return _impl->destroy();
+}
+
+bool node::need_destroy() const {
+    if (!_impl) {
+        throw spiderdb_error{error_code::invalid_node};
+    }
+    return _impl->need_destroy();
+}
+
+seastar::future<> node::fire(node_id child) const {
+    if (!_impl) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+    }
+    return _impl->fire(child);
+}
+
 seastar::future<> node::become_parent() const {
     if (!_impl) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
@@ -1052,20 +1081,6 @@ void node::update_metadata() const {
         throw spiderdb_error{error_code::invalid_node};
     }
     return _impl->update_metadata();
-}
-
-seastar::future<> node::destroy() const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
-    }
-    return _impl->destroy();
-}
-
-seastar::future<> node::remove_child(node_id child) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
-    }
-    return _impl->remove_child(child);
 }
 
 seastar::future<> node::clean() const {

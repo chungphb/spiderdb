@@ -551,7 +551,6 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_nonexistent_records, btree_test_fixture) {
             });
         });
     }).finally([btree, generator] {
-        printf("==================== CLOSE ==========================\n");
         return btree.close().finally([btree] {});
     });
 }
@@ -780,7 +779,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixtur
                         try {
                             std::rethrow_exception(fut.get_exception());
                         } catch (spiderdb::spiderdb_error &err) {
-                            SPIDERDB_REQUIRE_MESSAGE(err.get_error_code() == spiderdb::error_code::key_not_exists, "{}", err.get_error_code());
+                            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
                         }
                     });
                 });
@@ -816,7 +815,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_nonexistent_records, btree_test_fixture) 
                     try {
                         std::rethrow_exception(fut.get_exception());
                     } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE_MESSAGE(err.get_error_code() == spiderdb::error_code::key_not_exists, "{}", err.get_error_code());
+                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
                     }
                 });
             }).then([btree, generator] {
@@ -895,6 +894,158 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
         }).finally([btree, generator] {
             return btree.close().finally([btree] {});
         });
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_remove_all_records, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        }).then([btree, generator] {
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+                return btree.remove(std::move(record.first));
+            }).then([btree, generator] {
+                return seastar::do_for_each(generator->get_data(), [btree](auto record) {
+                    return btree.find(std::move(record.first)).then([](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == spiderdb::null_data_pointer, "Wrong result");
+                    });
+                });
+            });
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_TEST_SUITE_END()
+
+SPIDERDB_TEST_SUITE(btree_test_concurrency)
+
+SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_add_and_remove, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
+    generator->shuffle_data();
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        using it = boost::counting_iterator<int>;
+        const auto N_OPS = static_cast<int>(2 * N_RECORDS);
+        return seastar::parallel_for_each(it{0}, it{N_OPS - 1}, [btree, generator](auto i) {
+            const auto& record = generator->get_data()[i / 2];
+            if (i % 2 == 0) {
+                return btree.add(record.first.clone(), record.second);
+            } else {
+                return btree.remove(record.first.clone()).handle_exception([](auto ex) {
+                    try {
+                        std::rethrow_exception(ex);
+                    } catch (spiderdb::spiderdb_error &err) {
+                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                    }
+                });
+            }
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_add_and_find, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
+    generator->shuffle_data();
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        using it = boost::counting_iterator<int>;
+        const auto N_OPS = static_cast<int>(2 * N_RECORDS);
+        return seastar::parallel_for_each(it{0}, it{N_OPS - 1}, [btree, generator](auto i) {
+            const auto& record = generator->get_data()[i / 2];
+            if (i % 2 == 0) {
+                return btree.add(record.first.clone(), record.second);
+            } else {
+                return btree.find(record.first.clone()).then([data_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK(res == data_pointer || res == spiderdb::null_data_pointer);
+                });
+            }
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_remove_and_find, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
+    generator->shuffle_data();
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
+            return btree.add(std::move(record.first), record.second);
+        });
+    }).then([btree, generator] {
+        using it = boost::counting_iterator<int>;
+        const auto N_OPS = static_cast<int>(2 * N_RECORDS);
+        return seastar::parallel_for_each(it{0}, it{N_OPS - 1}, [btree, generator](auto i) {
+            const auto& record = generator->get_data()[i / 2];
+            if (i % 2 == 0) {
+                return btree.remove(record.first.clone()).handle_exception([](auto ex) {
+                    try {
+                        std::rethrow_exception(ex);
+                    } catch (spiderdb::spiderdb_error &err) {
+                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                    }
+                });
+            } else {
+                return btree.find(record.first.clone()).then([data_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK(res == data_pointer || res == spiderdb::null_data_pointer);
+                });
+            }
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_add_and_remove_and_find, btree_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
+    generator->shuffle_data();
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::btree btree{DATA_FILE, config};
+    return btree.open().then([btree, generator] {
+        using it = boost::counting_iterator<int>;
+        const auto N_OPS = static_cast<int>(3 * N_RECORDS);
+        return seastar::parallel_for_each(it{0}, it{N_OPS - 1}, [btree, generator](auto i) {
+            const auto& record = generator->get_data()[i / 3];
+            if (i % 3 == 0) {
+                return btree.add(record.first.clone(), record.second);
+            } else if (i % 3 == 1) {
+                return btree.remove(record.first.clone()).handle_exception([](auto ex) {
+                    try {
+                        std::rethrow_exception(ex);
+                    } catch (spiderdb::spiderdb_error &err) {
+                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                    }
+                });
+            } else {
+                return btree.find(record.first.clone()).then([data_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK(res == data_pointer || res == spiderdb::null_data_pointer);
+                });
+            }
+        });
+    }).finally([btree, generator] {
+        return btree.close().finally([btree] {});
     });
 }
 
