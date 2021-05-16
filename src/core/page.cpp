@@ -254,7 +254,7 @@ void page::log() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_page};
     }
-    return _impl->log();
+    _impl->log();
 }
 
 }

@@ -33,10 +33,6 @@ node btree_impl::get_root() const noexcept {
     return _root;
 }
 
-seastar::weak_ptr<btree_impl> btree_impl::get_pointer() noexcept {
-    return seastar::weakly_referencable<btree_impl>::weak_from_this();
-}
-
 const btree_config& btree_impl::get_config() const noexcept {
     return _config;
 }
@@ -52,7 +48,7 @@ seastar::future<> btree_impl::open() {
             return evicted_node.flush().finally([evicted_node] {});
         };
         _cache = std::make_unique<cache<node_id, node>>(_config.n_cached_nodes, std::move(evictor));
-        return file_impl::get_or_create_page(_btree_header->_root).then([this](auto root) {
+        return get_or_create_page(_btree_header->_root).then([this](auto root) {
             _btree_header->_page_count++;
             _btree_header->_dirty = true;
             _root = node{root, get_pointer()};
@@ -91,7 +87,7 @@ seastar::future<> btree_impl::flush() {
 }
 
 seastar::future<> btree_impl::close() {
-    if (!is_open()) {
+    if (!btree_impl::is_open()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
     }
     auto root = std::move(_root);
@@ -106,7 +102,7 @@ seastar::future<> btree_impl::add(string&& key, data_pointer ptr) {
     return _root.add(std::move(key), ptr);
 }
 
-seastar::future<> btree_impl::remove(string&& key) {
+seastar::future<data_pointer> btree_impl::remove(string&& key) {
     return _root.remove(std::move(key));
 }
 
@@ -115,10 +111,10 @@ seastar::future<data_pointer> btree_impl::find(string&& key) {
 }
 
 seastar::future<node> btree_impl::create_node(node_type type, seastar::weak_ptr<node_impl>&& parent) {
-    return file_impl::get_free_page().then([this, type, parent{std::move(parent)}](auto page) mutable {
+    return get_free_page().then([this, type, parent{std::move(parent)}](auto page) mutable {
         node new_node{page, get_pointer(), std::move(parent)};
         new_node.get_page().set_type(type);
-        _nodes.emplace(new_node.get_page().get_id(), new_node.get_pointer());
+        _nodes.emplace(new_node.get_id(), new_node.get_pointer());
         return cache_node(new_node).then([this, new_node] {
             SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Created", new_node.get_id());
             return seastar::make_ready_future<node>(new_node);
@@ -142,10 +138,10 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
                     _nodes.erase(node_it);
                 }
                 // Otherwise
-                return file_impl::get_or_create_page(id).then([this](auto page) {
+                return get_or_create_page(id).then([this](auto page) {
                     auto loading_node = node{page, get_pointer()};
                     return loading_node.load().then([this, loading_node] {
-                        _nodes.emplace(loading_node.get_page().get_id(), loading_node.get_pointer());
+                        _nodes.emplace(loading_node.get_id(), loading_node.get_pointer());
                         return seastar::make_ready_future<node>(loading_node);
                     });
                 });
@@ -180,6 +176,9 @@ seastar::shared_ptr<page_header> btree_impl::get_new_page_header() {
     return seastar::make_shared<node_header>();
 }
 
+seastar::weak_ptr<btree_impl> btree_impl::get_pointer() noexcept {
+    return seastar::weakly_referencable<btree_impl>::weak_from_this();
+}
 
 btree::btree(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<btree_impl>(std::move(name), config);
@@ -243,15 +242,15 @@ seastar::future<> btree::add(string&& key, data_pointer ptr) const {
     return _impl->add(std::move(key), ptr);
 }
 
-seastar::future<> btree::remove(string&& key) const {
+seastar::future<data_pointer> btree::remove(string&& key) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_btree});
     }
     if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::file_already_closed});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::empty_key});
     }
     return _impl->remove(std::move(key));
 }
@@ -276,7 +275,7 @@ void btree::log() const {
     if (!_impl->is_open()) {
         throw spiderdb_error{error_code::file_already_closed};
     }
-    return _impl->log();
+    _impl->log();
 }
 
 }

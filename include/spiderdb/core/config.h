@@ -22,6 +22,13 @@ struct btree_config {
     bool enable_logging_node_detail = false;
 };
 
-struct spiderdb_config : file_config, btree_config {};
+struct storage_config {
+    uint64_t max_available_pages = 1 << 8;
+    uint32_t min_available_space = 1 << 7;
+    uint32_t n_cached_data_pages = 1 << 8;
+    bool enable_logging_data_page_detail = false;
+};
+
+struct spiderdb_config : file_config, btree_config, storage_config {};
 
 }

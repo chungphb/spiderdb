@@ -33,24 +33,26 @@ public:
     btree_impl(std::string name, spiderdb_config config);
     ~btree_impl() = default;
     node get_root() const noexcept;
-    seastar::weak_ptr<btree_impl> get_pointer() noexcept;
     const btree_config& get_config() const noexcept;
-    seastar::future<> open() override;
-    seastar::future<> flush() override;
-    seastar::future<> close() override;
+    virtual seastar::future<> open() override;
+    virtual seastar::future<> flush() override;
+    virtual seastar::future<> close() override;
     seastar::future<> add(string&& key, data_pointer ptr);
-    seastar::future<> remove(string&& key);
+    seastar::future<data_pointer> remove(string&& key);
     seastar::future<data_pointer> find(string&& key);
     seastar::future<node> create_node(node_type type, seastar::weak_ptr<node_impl>&& parent = nullptr);
     seastar::future<node> get_node(node_id id, seastar::weak_ptr<node_impl>&& parent = nullptr);
     seastar::future<> cache_node(node node);
-    void log() const noexcept override;
-    bool is_open() const noexcept override;
+    virtual void log() const noexcept override;
+    virtual bool is_open() const noexcept override;
     friend btree;
 
 protected:
     seastar::shared_ptr<file_header> get_new_file_header() override;
     seastar::shared_ptr<page_header> get_new_page_header() override;
+
+private:
+    seastar::weak_ptr<btree_impl> get_pointer() noexcept;
 
 protected:
     seastar::shared_ptr<btree_header> _btree_header = nullptr;
@@ -76,7 +78,7 @@ public:
     seastar::future<> open() const;
     seastar::future<> close() const;
     seastar::future<> add(string&& key, data_pointer ptr) const;
-    seastar::future<> remove(string&& key) const;
+    seastar::future<data_pointer> remove(string&& key) const;
     seastar::future<data_pointer> find(string&& key) const;
     void log() const;
 

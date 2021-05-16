@@ -33,7 +33,7 @@ public:
     seastar::future<> load();
     seastar::future<> flush();
     seastar::future<> add(string&& key, data_pointer ptr);
-    seastar::future<> remove(string&& key);
+    seastar::future<data_pointer> remove(string&& key);
     seastar::future<data_pointer> find(string&& key);
     seastar::future<node> get_parent();
     seastar::future<node> get_child(uint32_t id);
@@ -111,7 +111,7 @@ public:
     seastar::future<> load() const;
     seastar::future<> flush() const;
     seastar::future<> add(string&& key, data_pointer ptr) const;
-    seastar::future<> remove(string&& key) const;
+    seastar::future<data_pointer> remove(string&& key) const;
     seastar::future<data_pointer> find(string&& key) const;
     void update_parent(seastar::weak_ptr<node_impl>&& parent) const;
     int64_t binary_search(const string& key, int64_t low, int64_t high) const;

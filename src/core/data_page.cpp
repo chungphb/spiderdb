@@ -259,6 +259,13 @@ const std::vector<string>& data_page::get_value_list() const {
     return _impl->_values;
 }
 
+size_t data_page::get_data_length() const {
+    if (!_impl) {
+        throw spiderdb_error{error_code::invalid_data_page};
+    }
+    return _impl->_data_len;
+}
+
 void data_page::mark_dirty() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_data_page};
@@ -312,7 +319,7 @@ void data_page::log() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_data_page};
     }
-    return _impl->log();
+    _impl->log();
 }
 
 }

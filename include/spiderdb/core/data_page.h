@@ -71,6 +71,7 @@ public:
     seastar::weak_ptr<data_page_impl> get_pointer() const;
     page get_page() const;
     const std::vector<string>& get_value_list() const;
+    size_t get_data_length() const;
     void mark_dirty() const;
 
     // APIs

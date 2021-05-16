@@ -21,7 +21,7 @@ union pointer {
     data_pointer pointer;
 };
 
-using value_id = size_t;
+using value_id = int16_t;
 
 enum struct page_type : uint8_t {
     unused = 0,

@@ -358,7 +358,7 @@ void file::log() const {
     if (!_impl->is_open()) {
         throw spiderdb_error{error_code::file_already_closed};
     }
-    return _impl->log();
+    _impl->log();
 }
 
 }
