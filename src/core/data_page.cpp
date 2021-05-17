@@ -9,8 +9,8 @@
 namespace spiderdb {
 
 seastar::future<> data_page_header::write(seastar::temporary_buffer<char> buffer) {
-    return page_header::write(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
-        buffer.trim_front(page_header::size());
+    return node_header::write(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(node_header::size());
         memcpy(&_value_count, buffer.begin(), sizeof(_value_count));
         buffer.trim_front(sizeof(_value_count));
         return seastar::now();
@@ -18,8 +18,8 @@ seastar::future<> data_page_header::write(seastar::temporary_buffer<char> buffer
 }
 
 seastar::future<> data_page_header::read(seastar::temporary_buffer<char> buffer) {
-    return page_header::read(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
-        buffer.trim_front(page_header::size());
+    return node_header::read(buffer.share()).then([this, buffer{buffer.share()}]() mutable {
+        buffer.trim_front(node_header::size());
         memcpy(buffer.get_write(), &_value_count, sizeof(_value_count));
         buffer.trim_front(sizeof(_value_count));
         return seastar::now();

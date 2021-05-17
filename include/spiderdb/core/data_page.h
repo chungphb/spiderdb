@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <spiderdb/core/page.h>
+#include <spiderdb/core/node.h>
 
 namespace spiderdb {
 
@@ -12,7 +12,7 @@ struct data_page_impl;
 struct data_page;
 struct storage_impl;
 
-struct data_page_header : page_header {
+struct data_page_header : node_header {
 public:
     seastar::future<> write(seastar::temporary_buffer<char> buffer) override;
     seastar::future<> read(seastar::temporary_buffer<char> buffer) override;

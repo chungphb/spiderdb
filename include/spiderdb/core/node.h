@@ -16,6 +16,9 @@ struct node_header : page_header {
 public:
     seastar::future<> write(seastar::temporary_buffer<char> buffer) override;
     seastar::future<> read(seastar::temporary_buffer<char> buffer) override;
+    static constexpr size_t size() noexcept {
+        return page_header::size() + sizeof(_parent) + sizeof(_key_count) + sizeof(_prefix_len);
+    }
     friend node_impl;
     friend node;
 
