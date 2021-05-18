@@ -19,6 +19,7 @@ public:
     available_page_list() = delete;
     available_page_list(size_t capacity);
     ~available_page_list() = default;
+    void set_min_available_space(uint32_t min_available_space);
     void add(page_id id, uint32_t available_space);
     void remove(page_id id);
     page_id find(uint32_t required_space);
@@ -28,6 +29,7 @@ public:
 
 private:
     const uint64_t _capacity = 0;
+    uint32_t _min_available_space = 0;
     std::unordered_map<page_id, uint32_t> _available_pages;
 };
 
@@ -92,10 +94,10 @@ public:
     const storage_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
-    seastar::future<> insert(string&& key, string&& value);
-    seastar::future<> update(string&& key, string&& value);
-    seastar::future<> erase(string&& key);
-    seastar::future<string> select(string&& key);
+    seastar::future<> insert(string&& key, string&& value) const;
+    seastar::future<> update(string&& key, string&& value) const;
+    seastar::future<> erase(string&& key) const;
+    seastar::future<string> select(string&& key) const;
     void log() const;
 
 private:

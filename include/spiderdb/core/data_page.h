@@ -16,6 +16,7 @@ struct data_page_header : node_header {
 public:
     seastar::future<> write(seastar::temporary_buffer<char> buffer) override;
     seastar::future<> read(seastar::temporary_buffer<char> buffer) override;
+    void log() const noexcept override;
     friend data_page_impl;
     friend data_page;
 

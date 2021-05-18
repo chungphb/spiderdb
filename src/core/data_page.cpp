@@ -26,6 +26,11 @@ seastar::future<> data_page_header::read(seastar::temporary_buffer<char> buffer)
     });
 }
 
+void data_page_header::log() const noexcept {
+    page_header::log();
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of values: ", _value_count);
+}
+
 data_page_impl::data_page_impl(page page, seastar::weak_ptr<storage_impl>&& storage) : _page{std::move(page)} {
     if (storage) {
         _storage = std::move(storage);
@@ -60,8 +65,6 @@ seastar::future<> data_page_impl::load() {
         // Mark as loaded
         _data_len = data.length();
         _loaded = true;
-        SPIDERDB_LOGGER_DEBUG("Data page {:0>12} - Loaded", _page.get_id());
-        log();
     });
 }
 
@@ -92,8 +95,6 @@ seastar::future<> data_page_impl::flush() {
     return _storage->write(_page, std::move(data)).then([this] {
         // Mark as flushed
         _dirty = false;
-        SPIDERDB_LOGGER_DEBUG("Data page {:0>12} - Flushed", _page.get_id());
-        log();
     });
 }
 
@@ -173,7 +174,7 @@ seastar::future<string> data_page_impl::find(value_id id) {
 }
 
 void data_page_impl::log() const {
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of values: ", _header->_value_count);
+    _page.log();
     // FIXME
 }
 
@@ -189,7 +190,7 @@ seastar::future<> data_page_impl::clean() {
     _page.set_type(node_type::unused);
     _data_len = 0;
     _header->_value_count = 0;
-    SPIDERDB_LOGGER_DEBUG("Data page {:0>12} - Cleaned", _page.get_id());
+    SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Cleaned", _page.get_id());
     return _storage->unlink_pages_from(_page);
 }
 

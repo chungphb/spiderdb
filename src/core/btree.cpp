@@ -52,6 +52,7 @@ seastar::future<> btree_impl::open() {
             _btree_header->_page_count++;
             _btree_header->_dirty = true;
             _root = node{root, get_pointer()};
+            SPIDERDB_LOGGER_DEBUG("Root {:0>12} - Created", _root.get_id());
             return seastar::futurize_invoke([this, root] {
                 switch (root.get_type()) {
                     case page_type::unused: {

@@ -9,6 +9,19 @@ namespace spiderdb {
 
 available_page_list::available_page_list(size_t capacity) : _capacity{capacity} {}
 
+void available_page_list::set_min_available_space(uint32_t min_available_space) {
+    if (min_available_space > _min_available_space) {
+        for (auto it = _available_pages.begin(); it != _available_pages.end();) {
+            if (it->second < min_available_space) {
+                it = _available_pages.erase(it);
+            } else {
+                it++;
+            }
+        }
+    }
+    _min_available_space = min_available_space;
+}
+
 void available_page_list::add(page_id id, uint32_t available_space) {
     _available_pages.insert_or_assign(id, available_space);
 }
@@ -24,7 +37,12 @@ page_id available_page_list::find(uint32_t required_space) {
     if (it == _available_pages.end()) {
         return null_page;
     }
-    return it->first;
+    auto available_page = it->first;
+    it->second -= required_space;
+    if (it->second < _min_available_space) {
+        _available_pages.erase(it);
+    }
+    return available_page;
 }
 
 seastar::future<> available_page_list::write(seastar::temporary_buffer<char> buffer) {
@@ -95,6 +113,7 @@ seastar::future<> storage_impl::open() {
     return btree_impl::open().then([this] {
         _storage_header = seastar::dynamic_pointer_cast<storage_header>(_btree_header);
         _storage_header->_available_page_list = std::make_unique<available_page_list>(_config.max_available_pages);
+        _storage_header->_available_page_list->set_min_available_space(_config.min_available_space);
         auto evictor = [](const std::pair<page_id, data_page>& evicted_item) -> seastar::future<> {
             auto evicted_data_page = evicted_item.second;
             return evicted_data_page.flush().finally([evicted_data_page] {});
@@ -178,7 +197,7 @@ seastar::future<data_page> storage_impl::create_data_page() {
         new_data_page.get_page().set_type(page_type::data);
         _data_pages.emplace(new_data_page.get_id(), new_data_page.get_pointer());
         return cache_data_page(new_data_page).then([this, new_data_page] {
-            SPIDERDB_LOGGER_DEBUG("Data page {:0>12} - Created", new_data_page.get_id());
+            SPIDERDB_LOGGER_DEBUG("Page {:0>12} - Created", new_data_page.get_id());
             return seastar::make_ready_future<data_page>(new_data_page);
         });
     });
@@ -323,7 +342,7 @@ seastar::future<> storage::close() const {
     return _impl->close();
 }
 
-seastar::future<> storage::insert(string&& key, string&& value) {
+seastar::future<> storage::insert(string&& key, string&& value) const {
     if (!_impl) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
     }
@@ -342,7 +361,7 @@ seastar::future<> storage::insert(string&& key, string&& value) {
     return _impl->insert(std::move(key), std::move(value));
 }
 
-seastar::future<> storage::update(string&& key, string&& value) {
+seastar::future<> storage::update(string&& key, string&& value) const {
     if (!_impl) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
     }
@@ -358,7 +377,7 @@ seastar::future<> storage::update(string&& key, string&& value) {
     return _impl->update(std::move(key), std::move(value));
 }
 
-seastar::future<> storage::erase(string&& key) {
+seastar::future<> storage::erase(string&& key) const {
     if (!_impl) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
     }
@@ -371,7 +390,7 @@ seastar::future<> storage::erase(string&& key) {
     return _impl->erase(std::move(key));
 }
 
-seastar::future<string> storage::select(string&& key) {
+seastar::future<string> storage::select(string&& key) const {
     if (!_impl) {
         return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_btree});
     }

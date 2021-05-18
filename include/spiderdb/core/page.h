@@ -25,6 +25,7 @@ struct page_header {
 public:
     virtual seastar::future<> write(seastar::temporary_buffer<char> buffer);
     virtual seastar::future<> read(seastar::temporary_buffer<char> buffer);
+    virtual void log() const noexcept;
     static constexpr size_t size() noexcept {
         return sizeof(_type) + sizeof(_data_len) + sizeof(_record_len) + sizeof(_next);
     }

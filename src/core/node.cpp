@@ -34,6 +34,14 @@ seastar::future<> node_header::read(seastar::temporary_buffer<char> buffer) {
     });
 }
 
+void node_header::log() const noexcept {
+    page_header::log();
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of keys: ", _key_count);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prefix length: ", _prefix_len);
+    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _parent);
+}
+
+
 node_impl::node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::weak_ptr<node_impl>&& parent) : _page{std::move(page)} {
     if (btree) {
         _btree = std::move(btree);
@@ -113,8 +121,6 @@ seastar::future<> node_impl::load() {
         // Mark as loaded
         calculate_data_length();
         _loaded = true;
-        SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Loaded", _page.get_id());
-        log();
     });
 }
 
@@ -172,8 +178,6 @@ seastar::future<> node_impl::flush() {
         // Mark as flushed
         _parent = nullptr;
         _dirty = false;
-        SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Flushed", _page.get_id());
-        log();
     });
 }
 
@@ -657,9 +661,7 @@ seastar::future<> node_impl::fire(node_id child) {
 }
 
 void node_impl::log() const {
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Number of keys: ", _header->_key_count);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prefix length: ", _header->_prefix_len);
-    SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _header->_parent);
+    _page.log();
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prev node: ", _prev);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next node: ", _next);
     if (_btree && _btree->get_config().enable_logging_node_detail) {
