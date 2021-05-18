@@ -41,7 +41,6 @@ void node_header::log() const noexcept {
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Parent node: ", _parent);
 }
 
-
 node_impl::node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::weak_ptr<node_impl>&& parent) : _page{std::move(page)} {
     if (btree) {
         _btree = std::move(btree);

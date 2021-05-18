@@ -23,6 +23,7 @@ struct btree_config {
 };
 
 struct storage_config {
+    uint64_t max_empty_values_on_each_page = 1 << 8;
     uint64_t max_available_pages = 1 << 8;
     uint32_t min_available_space = 1 << 7;
     uint32_t n_cached_data_pages = 1 << 8;

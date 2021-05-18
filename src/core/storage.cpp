@@ -106,6 +106,10 @@ storage_impl::storage_impl(std::string name, spiderdb_config config) : btree_imp
     _config = static_cast<storage_config&>(config);
 }
 
+const storage_config& storage_impl::get_storage_config() const noexcept {
+    return _config;
+}
+
 seastar::future<> storage_impl::open() {
     if (is_open()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_opened});
@@ -241,8 +245,8 @@ seastar::future<> storage_impl::cache_data_page(data_page data_page) {
 
 seastar::future<data_pointer> storage_impl::add_value(string&& value) {
     auto required_space = sizeof(uint32_t) + value.length();
-    auto available_page = _storage_header->_available_page_list->find(required_space);
-    return seastar::futurize_invoke([this, available_page] {
+    return seastar::with_semaphore(_create_data_page_lock, 1, [this, required_space] {
+        auto available_page = _storage_header->_available_page_list->find(required_space);
         if (available_page != null_page) {
             return get_data_page(available_page);
         } else {
@@ -283,8 +287,8 @@ seastar::future<string> storage_impl::find_value(data_pointer ptr) {
 }
 
 data_pointer storage_impl::generate_data_pointer(page_id pid, value_id vid) {
-    assert(pid >= 0 && pid < 0x7fffffffffff);
-    assert(vid >= 0 && vid < 0x7fffffffffff);
+    assert(pid >= 0 && pid <= 0x7fffffffffff);
+    assert(vid >= 0 && vid <= 0x7fff);
     return ((pid & 0xffffffffffff) << 16) | vid;
 }
 

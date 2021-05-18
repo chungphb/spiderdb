@@ -48,6 +48,7 @@ public:
     storage_impl() = delete;
     storage_impl(std::string name, spiderdb_config config);
     ~storage_impl() = default;
+    const storage_config& get_storage_config() const noexcept; // FIXME
     seastar::future<> open() override;
     seastar::future<> flush() override;
     seastar::future<> close() override;
@@ -79,6 +80,7 @@ private:
     storage_config _config;
     std::unique_ptr<cache<page_id, data_page>> _cache;
     std::unordered_map<page_id, seastar::weak_ptr<data_page_impl>> _data_pages;
+    seastar::semaphore _create_data_page_lock{1};
     seastar::semaphore _get_data_page_lock{1};
 };
 

@@ -330,7 +330,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_records_with_invalid_key_length, btree_test_
     config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
     return btree.open().then([btree] {
-        spiderdb::string key{N_RECORDS, 0};
+        spiderdb::string key{LONG_KEY_LEN * 10, 0};
         spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
