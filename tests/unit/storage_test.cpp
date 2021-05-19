@@ -437,3 +437,204 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_after_reopening, storage_test_fixture) {
 }
 
 SPIDERDB_TEST_SUITE_END()
+
+SPIDERDB_TEST_SUITE(storage_test_select)
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_consecutively, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_concurrently, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_consecutively, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            generator->shuffle_data();
+            return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_concurrently, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_records_with_long_key_and_long_value, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_nonexistent_records, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        }).then([storage, generator] {
+            generator->clear_data();
+            generator->generate_sequential_data(N_RECORDS, N_RECORDS, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
+                    SPIDERDB_REQUIRE(fut.failed());
+                    try {
+                        std::rethrow_exception(fut.get_exception());
+                    } catch (spiderdb::spiderdb_error &err) {
+                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                    }
+                });
+            });
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_before_opening, storage_test_fixture) {
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    spiderdb::string key{LONG_KEY_LEN, 0};
+    return storage.select(std::move(key)).then_wrapped([](auto fut) {
+        SPIDERDB_REQUIRE(fut.failed());
+        try {
+            std::rethrow_exception(fut.get_exception());
+        } catch (spiderdb::spiderdb_error &err) {
+            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+        }
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_select_after_closing, storage_test_fixture) {
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage] {
+        return storage.close();
+    }).then([storage] {
+        spiderdb::string key{LONG_KEY_LEN, 0};
+        return storage.select(std::move(key)).then_wrapped([](auto fut) {
+            SPIDERDB_REQUIRE(fut.failed());
+            try {
+                std::rethrow_exception(fut.get_exception());
+            } catch (spiderdb::spiderdb_error &err) {
+                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
+            }
+        });
+    });
+}
+
+SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        return seastar::do_for_each(generator->get_data(), [storage](auto record) {
+            return storage.insert(std::move(record.first), std::move(record.second));
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    }).then([storage, generator] {
+        return storage.open().then([storage, generator] {
+            generator->shuffle_data();
+            return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
+                return storage.select(std::move(record.first)).then([value{std::move(record.second)}](auto&& res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value, "Wrong result: Actual = {}, Expected = {}", res, value);
+                });
+            });
+        }).finally([storage, generator] {
+            return storage.close().finally([storage] {});
+        });
+    });
+}
+
+SPIDERDB_TEST_SUITE_END()

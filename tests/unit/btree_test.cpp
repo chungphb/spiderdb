@@ -535,7 +535,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_nonexistent_records, btree_test_fixture) {
     auto generator = seastar::make_lw_shared<data_generator>();
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN);
     spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::trace;
+    config.log_level = seastar::log_level::debug;
     spiderdb::btree btree{DATA_FILE, config};
     return btree.open().then([btree, generator] {
         return seastar::do_for_each(generator->get_data(), [btree](auto record) {
