@@ -33,7 +33,6 @@ public:
     btree_impl(std::string name, spiderdb_config config);
     ~btree_impl() = default;
     node get_root() const noexcept;
-    const btree_config& get_config() const noexcept;
     virtual seastar::future<> open() override;
     virtual seastar::future<> flush() override;
     virtual seastar::future<> close() override;
@@ -59,7 +58,6 @@ protected:
 
 private:
     node _root;
-    btree_config _config;
     std::unique_ptr<cache<node_id, node>> _cache;
     std::unordered_map<node_id, seastar::weak_ptr<node_impl>> _nodes;
     seastar::semaphore _get_node_lock{1};
@@ -74,7 +72,7 @@ public:
     btree(btree&& other_btree) noexcept;
     btree& operator=(const btree& other_btree);
     btree& operator=(btree&& other_btree) noexcept;
-    const btree_config& get_config() const;
+    const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
     seastar::future<> add(string&& key, data_pointer ptr) const;

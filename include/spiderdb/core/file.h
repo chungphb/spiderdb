@@ -38,7 +38,7 @@ protected:
 struct file_impl : seastar::weakly_referencable<file_impl> {
 public:
     file_impl() = delete;
-    file_impl(std::string name, file_config config);
+    file_impl(std::string name, spiderdb_config config);
     ~file_impl();
     virtual seastar::future<> open();
     virtual seastar::future<> flush();
@@ -60,12 +60,14 @@ protected:
     seastar::future<page> get_free_page();
     seastar::future<page> get_or_create_page(page_id id);
 
+public:
+    spiderdb_config _config;
+
 protected:
     seastar::shared_ptr<file_header> _file_header = nullptr;
 
 private:
     const std::string _name;
-    file_config _config;
     seastar::file _file;
     std::unordered_map<page_id, seastar::weak_ptr<page_impl>> _pages;
     seastar::semaphore _file_lock{1};
@@ -75,13 +77,13 @@ private:
 struct file {
 public:
     file() = delete;
-    file(std::string name, file_config config = file_config());
+    file(std::string name, spiderdb_config config = spiderdb_config());
     ~file() = default;
     file(const file& other_file);
     file(file&& other_file) noexcept;
     file& operator=(const file& other_file);
     file& operator=(file&& other_file) noexcept;
-    const file_config& get_config() const;
+    const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
     seastar::future<page_id> write(string data) const;

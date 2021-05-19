@@ -39,7 +39,7 @@ void page_header::log() const noexcept {
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next page: ", _next);
 }
 
-page_impl::page_impl(page_id id, const file_config& config) : _id{id}, _config{config} {
+page_impl::page_impl(page_id id, const spiderdb_config& config) : _id{id}, _config{config} {
     _data = string{_config.page_size, 0};
 }
 
@@ -144,7 +144,7 @@ bool page_impl::is_valid() const noexcept {
     return (bool)_header;
 }
 
-page::page(page_id id, const file_config& config) {
+page::page(page_id id, const spiderdb_config& config) {
     _impl = seastar::make_lw_shared<page_impl>(id, config);
 }
 

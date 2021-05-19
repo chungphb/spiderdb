@@ -60,7 +60,7 @@ seastar::future<> file_header::read(seastar::temporary_buffer<char> buffer) {
     return seastar::now();
 }
 
-file_impl::file_impl(std::string name, file_config config) : _name{std::move(name)}, _config{config} {
+file_impl::file_impl(std::string name, spiderdb_config config) : _name{std::move(name)}, _config{std::move(config)} {
     spiderdb_logger.set_level(_config.log_level);
 }
 
@@ -282,7 +282,7 @@ seastar::future<page> file_impl::get_or_create_page(page_id id) {
     });
 }
 
-file::file(std::string name, file_config config) {
+file::file(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<file_impl>(std::move(name), config);
 }
 
@@ -304,7 +304,7 @@ file& file::operator=(file&& other_file) noexcept {
     return *this;
 }
 
-const file_config& file::get_config() const {
+const spiderdb_config& file::get_config() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_file};
     }

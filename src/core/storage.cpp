@@ -102,13 +102,7 @@ seastar::future<> storage_header::read(seastar::temporary_buffer<char> buffer) {
     });
 }
 
-storage_impl::storage_impl(std::string name, spiderdb_config config) : btree_impl{std::move(name), config} {
-    _config = static_cast<storage_config&>(config);
-}
-
-const storage_config& storage_impl::get_storage_config() const noexcept {
-    return _config;
-}
+storage_impl::storage_impl(std::string name, spiderdb_config config) : btree_impl{std::move(name), std::move(config)} {}
 
 seastar::future<> storage_impl::open() {
     if (is_open()) {
@@ -322,7 +316,7 @@ storage& storage::operator=(storage&& other_storage) noexcept {
     return *this;
 }
 
-const storage_config& storage::get_config() const {
+const spiderdb_config& storage::get_config() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_storage};
     }
@@ -356,7 +350,7 @@ seastar::future<> storage::insert(string&& key, string&& value) const {
     if (key.empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
     }
-    if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->get_config().min_keys_on_each_node) {
+    if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->_config.min_keys_on_each_node) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_long});
     }
     if (value.empty()) {

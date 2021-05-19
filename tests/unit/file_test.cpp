@@ -169,7 +169,7 @@ spiderdb::string generate_data(char c = '0', size_t len = 1 << 16, const char* p
 SPIDERDB_TEST_SUITE(file_test_write)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_a_regular_string, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -183,7 +183,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_a_regular_string, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -203,7 +203,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     spiderdb::string str = std::move(generate_data('0'));
@@ -219,7 +219,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -239,7 +239,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file, work_size{config.page_size - config.page_header_size}] {
@@ -257,7 +257,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, file_test_
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file, work_size{config.page_size - config.page_header_size}] {
@@ -275,7 +275,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, file_test_f
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_write_after_reopening, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -302,7 +302,7 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(file_test_read)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_a_regular_page, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -318,7 +318,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_a_regular_page, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_invalid_pages, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -345,7 +345,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_invalid_pages, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_before_opening, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.read(spiderdb::page_id{0}).then_wrapped([](auto fut) {
@@ -359,7 +359,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_before_opening, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_after_closing, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -377,7 +377,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_after_closing, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_a_page_multiple_times, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -396,7 +396,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_a_page_multiple_times, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_after_reopening, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     using data_t = std::pair<spiderdb::string, spiderdb::page_id>;
@@ -422,7 +422,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_after_reopening, file_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_multiple_pages_consecutively, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {
@@ -450,7 +450,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_multiple_pages_consecutively, file_test_fix
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_read_multiple_pages_concurrently, file_test_fixture) {
-    spiderdb::file_config config;
+    spiderdb::spiderdb_config config;
     config.log_level = seastar::log_level::debug;
     spiderdb::file file{DATA_FILE, config};
     return file.open().then([file] {

@@ -25,16 +25,10 @@ seastar::future<> btree_header::read(seastar::temporary_buffer<char> buffer) {
     });
 }
 
-btree_impl::btree_impl(std::string name, spiderdb_config config) : file_impl{std::move(name), static_cast<file_config&>(config)} {
-    _config = static_cast<btree_config&>(config);
-}
+btree_impl::btree_impl(std::string name, spiderdb_config config) : file_impl{std::move(name), std::move(config)} {}
 
 node btree_impl::get_root() const noexcept {
     return _root;
-}
-
-const btree_config& btree_impl::get_config() const noexcept {
-    return _config;
 }
 
 seastar::future<> btree_impl::open() {
@@ -203,7 +197,7 @@ btree& btree::operator=(btree&& other_btree) noexcept {
     return *this;
 }
 
-const btree_config& btree::get_config() const {
+const spiderdb_config& btree::get_config() const {
     if (!_impl) {
         throw spiderdb_error{error_code::invalid_btree};
     }
@@ -237,7 +231,7 @@ seastar::future<> btree::add(string&& key, data_pointer ptr) const {
     if (key.empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
     }
-    if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->get_config().min_keys_on_each_node) {
+    if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->_config.min_keys_on_each_node) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_long});
     }
     return _impl->add(std::move(key), ptr);

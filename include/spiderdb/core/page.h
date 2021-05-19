@@ -42,7 +42,7 @@ protected:
 struct page_impl : seastar::enable_lw_shared_from_this<page_impl>, seastar::weakly_referencable<page_impl> {
 public:
     page_impl() = delete;
-    page_impl(page_id id, const file_config& config);
+    page_impl(page_id id, const spiderdb_config& config);
     ~page_impl() = default;
     uint32_t get_work_size() const noexcept;
     seastar::future<> load(seastar::file file);
@@ -57,7 +57,7 @@ private:
 
 private:
     const page_id _id = null_page;
-    const file_config& _config;
+    const spiderdb_config& _config;
     seastar::shared_ptr<page_header> _header = nullptr;
     string _data;
     seastar::semaphore _lock{1};
@@ -67,7 +67,7 @@ private:
 struct page {
 public:
     page() = delete;
-    page(page_id id, const file_config& config);
+    page(page_id id, const spiderdb_config& config);
     page(seastar::lw_shared_ptr<page_impl> impl);
     ~page() = default;
     page(const page& other_page);

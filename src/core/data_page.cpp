@@ -150,7 +150,7 @@ seastar::future<> data_page_impl::remove(value_id id) {
         _dirty = true;
         return seastar::now();
     }).then([this] {
-        if (_header->_value_count == 0 && _values.size() == _storage->get_storage_config().max_empty_values_on_each_page) {
+        if (_header->_value_count == 0 && _values.size() == _storage->_config.max_empty_values_on_each_page) {
             return clean();
         }
         return cache(shared_from_this());

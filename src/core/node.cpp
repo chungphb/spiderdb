@@ -417,10 +417,10 @@ seastar::future<> node_impl::split() {
 }
 
 bool node_impl::need_split() noexcept {
-    if (_keys.size() < _btree->get_config().min_keys_on_each_node) {
+    if (_keys.size() < _btree->_config.min_keys_on_each_node) {
         return false;
     }
-    if (_keys.size() > _btree->get_config().max_keys_on_each_node) {
+    if (_keys.size() > _btree->_config.max_keys_on_each_node) {
         return true;
     }
     auto work_size = _page.get_work_size();
@@ -547,7 +547,7 @@ seastar::future<> node_impl::merge() {
 }
 
 bool node_impl::need_merge() noexcept {
-    if (_keys.size() < _btree->get_config().min_keys_on_each_node / 2) {
+    if (_keys.size() < _btree->_config.min_keys_on_each_node / 2) {
         return true;
     }
     auto work_size = _page.get_work_size();
@@ -663,7 +663,7 @@ void node_impl::log() const {
     _page.log();
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Prev node: ", _prev);
     SPIDERDB_LOGGER_TRACE("\t{:<18}{:>20}", "Next node: ", _next);
-    if (_btree && _btree->get_config().enable_logging_node_detail) {
+    if (_btree && _btree->_config.enable_logging_node_detail) {
         std::stringstream detail;
         detail << "Keys:\n";
         for (size_t i = 0; i < _keys.size(); ++i) {
@@ -755,7 +755,7 @@ void node_impl::update_data(std::vector<string>&& keys, std::vector<pointer>&& p
 }
 
 void node_impl::update_metadata() {
-    if (_keys.size() > _btree->get_config().max_keys_on_each_node) {
+    if (_keys.size() > _btree->_config.max_keys_on_each_node) {
         throw spiderdb_error{error_code::exceeded_max_key_count};
     }
     _header->_key_count = _keys.size();

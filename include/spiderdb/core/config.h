@@ -8,6 +8,8 @@
 
 namespace spiderdb {
 
+namespace internal {
+
 struct file_config {
     uint16_t file_header_size = 1 << 12;
     uint16_t page_header_size = 1 << 7;
@@ -30,6 +32,8 @@ struct storage_config {
     bool enable_logging_data_page_detail = false;
 };
 
-struct spiderdb_config : file_config, btree_config, storage_config {};
+}
+
+struct spiderdb_config : internal::file_config, internal::btree_config, internal::storage_config {};
 
 }
