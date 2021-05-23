@@ -1222,3 +1222,67 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_all_records, storage_test_fixture) {
 }
 
 SPIDERDB_TEST_SUITE_END()
+
+SPIDERDB_TEST_SUITE(storage_test_concurrency)
+
+SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_requests, storage_test_fixture) {
+    auto generator = seastar::make_lw_shared<data_generator>();
+    generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
+    generator->shuffle_data();
+    spiderdb::spiderdb_config config;
+    config.log_level = seastar::log_level::debug;
+    spiderdb::storage storage{DATA_FILE, config};
+    return storage.open().then([storage, generator] {
+        using it = boost::counting_iterator<int>;
+        const auto N_OPS = static_cast<int>(4 * N_RECORDS);
+        return seastar::parallel_for_each(it{0}, it{N_OPS - 1}, [storage, generator](auto i) {
+            const auto& record = generator->get_data()[i / 4];
+            switch (i % 4) {
+                case 0: {
+                    return storage.insert(record.first.clone(), record.second.clone());
+                }
+                case 1: {
+                    return storage.select(record.first.clone()).then_wrapped([value{record.second}](auto fut) {
+                        if (fut.failed()) {
+                            try {
+                                std::rethrow_exception(fut.get_exception());
+                            } catch (spiderdb::spiderdb_error &err) {
+                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                            }
+                        } else {
+                            auto&& updated_value = value + spiderdb::to_string(0);
+                            SPIDERDB_CHECK_MESSAGE(fut.get() == value || fut.get() == updated_value, "Wrong result: {}", fut.get());
+                        }
+                    });
+                }
+                case 2: {
+                    auto&& updated_value = record.second + spiderdb::to_string(0);
+                    return storage.update(record.first.clone(), std::move(updated_value)).then_wrapped([](auto fut) {
+                        if (fut.failed()) {
+                            try {
+                                std::rethrow_exception(fut.get_exception());
+                            } catch (spiderdb::spiderdb_error &err) {
+                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                            }
+                        }
+                    });
+                }
+                default: {
+                    return storage.erase(record.first.clone()).then_wrapped([](auto fut) {
+                        if (fut.failed()) {
+                            try {
+                                std::rethrow_exception(fut.get_exception());
+                            } catch (spiderdb::spiderdb_error &err) {
+                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }).finally([storage, generator] {
+        return storage.close().finally([storage] {});
+    });
+}
+
+SPIDERDB_TEST_SUITE_END()
