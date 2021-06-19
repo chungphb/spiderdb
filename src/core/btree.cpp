@@ -179,21 +179,21 @@ btree::btree(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<btree_impl>(std::move(name), config);
 }
 
-btree::btree(const btree& other_btree) {
-    _impl = other_btree._impl;
+btree::btree(const btree& other) {
+    _impl = other._impl;
 }
 
-btree::btree(btree&& other_btree) noexcept {
-    _impl = std::move(other_btree._impl);
+btree::btree(btree&& other) noexcept {
+    _impl = std::move(other._impl);
 }
 
-btree& btree::operator=(const btree& other_btree) {
-    _impl = other_btree._impl;
+btree& btree::operator=(const btree& other) {
+    _impl = other._impl;
     return *this;
 }
 
-btree& btree::operator=(btree&& other_btree) noexcept {
-    _impl = std::move(other_btree._impl);
+btree& btree::operator=(btree&& other) noexcept {
+    _impl = std::move(other._impl);
     return *this;
 }
 

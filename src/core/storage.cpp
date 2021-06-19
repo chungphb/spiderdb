@@ -298,21 +298,21 @@ storage::storage(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<storage_impl>(std::move(name), config);
 }
 
-storage::storage(const storage& other_storage) {
-    _impl = other_storage._impl;
+storage::storage(const storage& other) {
+    _impl = other._impl;
 }
 
-storage::storage(storage&& other_storage) noexcept {
-    _impl = std::move(other_storage._impl);
+storage::storage(storage&& other) noexcept {
+    _impl = std::move(other._impl);
 }
 
-storage& storage::operator=(const storage& other_storage) {
-    _impl = other_storage._impl;
+storage& storage::operator=(const storage& other) {
+    _impl = other._impl;
     return *this;
 }
 
-storage& storage::operator=(storage&& other_storage) noexcept {
-    _impl = std::move(other_storage._impl);
+storage& storage::operator=(storage&& other) noexcept {
+    _impl = std::move(other._impl);
     return *this;
 }
 
@@ -361,7 +361,7 @@ seastar::future<> storage::insert(string&& key, string&& value) const {
 
 seastar::future<> storage::update(string&& key, string&& value) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
     }
     if (!_impl->is_open()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
@@ -377,7 +377,7 @@ seastar::future<> storage::update(string&& key, string&& value) const {
 
 seastar::future<> storage::erase(string&& key) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
     }
     if (!_impl->is_open()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
@@ -390,7 +390,7 @@ seastar::future<> storage::erase(string&& key) const {
 
 seastar::future<string> storage::select(string&& key) const {
     if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_btree});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_storage});
     }
     if (!_impl->is_open()) {
         return seastar::make_exception_future<string>(spiderdb_error{error_code::file_already_closed});
@@ -403,7 +403,7 @@ seastar::future<string> storage::select(string&& key) const {
 
 void storage::log() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_btree};
+        throw spiderdb_error{error_code::invalid_storage};
     }
     if (!_impl->is_open()) {
         throw spiderdb_error{error_code::file_already_closed};

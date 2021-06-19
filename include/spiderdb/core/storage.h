@@ -87,10 +87,10 @@ public:
     storage() = delete;
     storage(std::string name, spiderdb_config config = spiderdb_config());
     ~storage() = default;
-    storage(const storage& other_storage);
-    storage(storage&& other_storage) noexcept;
-    storage& operator=(const storage& other_storage);
-    storage& operator=(storage&& other_storage) noexcept;
+    storage(const storage& other);
+    storage(storage&& other) noexcept;
+    storage& operator=(const storage& other);
+    storage& operator=(storage&& other) noexcept;
     const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;

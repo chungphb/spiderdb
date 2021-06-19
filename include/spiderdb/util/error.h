@@ -26,7 +26,8 @@ namespace spiderdb {
     FUNC(invalid_data_page, 500)           \
     FUNC(value_not_exists, 501)            \
     FUNC(empty_value, 502)                 \
-    FUNC(invalid_storage, 600)
+    FUNC(invalid_storage, 600)             \
+    FUNC(invalid_database, 700)
 
 #define SPIDERDB_GENERATE_ERROR_CODE(error, code) error = code,
 enum struct error_code : uint16_t {

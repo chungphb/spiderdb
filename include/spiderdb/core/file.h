@@ -79,10 +79,10 @@ public:
     file() = delete;
     file(std::string name, spiderdb_config config = spiderdb_config());
     ~file() = default;
-    file(const file& other_file);
-    file(file&& other_file) noexcept;
-    file& operator=(const file& other_file);
-    file& operator=(file&& other_file) noexcept;
+    file(const file& other);
+    file(file&& other) noexcept;
+    file& operator=(const file& other);
+    file& operator=(file&& other) noexcept;
     const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;

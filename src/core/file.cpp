@@ -286,21 +286,21 @@ file::file(std::string name, spiderdb_config config) {
     _impl = seastar::make_lw_shared<file_impl>(std::move(name), config);
 }
 
-file::file(const file& other_file) {
-    _impl = other_file._impl;
+file::file(const file& other) {
+    _impl = other._impl;
 }
 
-file::file(file&& other_file) noexcept {
-    _impl = std::move(other_file._impl);
+file::file(file&& other) noexcept {
+    _impl = std::move(other._impl);
 }
 
-file& file::operator=(const file& other_file) {
-    _impl = other_file._impl;
+file& file::operator=(const file& other) {
+    _impl = other._impl;
     return *this;
 }
 
-file& file::operator=(file&& other_file) noexcept {
-    _impl = std::move(other_file._impl);
+file& file::operator=(file&& other) noexcept {
+    _impl = std::move(other._impl);
     return *this;
 }
 

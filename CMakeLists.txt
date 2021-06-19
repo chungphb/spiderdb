@@ -15,6 +15,7 @@ if(SpiderDB_TESTING)
 endif()
 
 set(SPIDERDB_HEADERS
+    "include/spiderdb/core/spiderdb.h"
     "include/spiderdb/core/data_page.h"
     "include/spiderdb/core/storage.h"
     "include/spiderdb/core/node.h"
@@ -25,10 +26,12 @@ set(SPIDERDB_HEADERS
     "include/spiderdb/util/string.h"
     "include/spiderdb/util/cache.h"
     "include/spiderdb/util/log.h"
+    "include/spiderdb/util/hasher.h"
     "include/spiderdb/util/error.h"
     "include/spiderdb/util/data_types.h"
 )
 set(SPIDERDB_SOURCES
+    "src/core/spiderdb.cpp"
     "src/core/data_page.cpp"
     "src/core/storage.cpp"
     "src/core/node.cpp"
@@ -36,6 +39,7 @@ set(SPIDERDB_SOURCES
     "src/core/page.cpp"
     "src/core/file.cpp"
     "src/util/log.cpp"
+    "src/util/hasher.cpp"
     "src/util/error.cpp"
 )
 add_library(spiderdb STATIC ${SPIDERDB_HEADERS} ${SPIDERDB_SOURCES})

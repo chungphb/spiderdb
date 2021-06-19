@@ -68,10 +68,10 @@ public:
     btree() = delete;
     btree(std::string name, spiderdb_config config = spiderdb_config());
     ~btree() = default;
-    btree(const btree& other_btree);
-    btree(btree&& other_btree) noexcept;
-    btree& operator=(const btree& other_btree);
-    btree& operator=(btree&& other_btree) noexcept;
+    btree(const btree& other);
+    btree(btree&& other) noexcept;
+    btree& operator=(const btree& other);
+    btree& operator=(btree&& other) noexcept;
     const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
