@@ -49,10 +49,10 @@ struct test_case_name : public spiderdb_auto_test_case { \
         return #test_case_name; \
     } \
     seastar::future<> run_test_case() override { \
-        fixture_name fixture; \
-        return do_run_test_case(); \
+        auto fixture = seastar::make_lw_shared<fixture_name>(); \
+        return do_run_test_case(*fixture).finally([fixture] {}); \
     } \
-    seastar::future<> do_run_test_case(); \
+    seastar::future<> do_run_test_case(fixture_name& fixture); \
 }; \
 static test_case_name test_case_name ## instance; \
-seastar::future<> test_case_name::do_run_test_case()
+seastar::future<> test_case_name::do_run_test_case(fixture_name& fixture)

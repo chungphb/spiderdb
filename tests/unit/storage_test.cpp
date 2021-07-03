@@ -8,17 +8,17 @@
 #include <spiderdb/testing/test_case.h>
 #include <boost/iterator/counting_iterator.hpp>
 
+#define SPIDERDB_ASSERT_EQUAL(actual, expected) \
+try { \
+    std::rethrow_exception(actual); \
+} catch (spiderdb::spiderdb_error& err) { \
+    SPIDERDB_REQUIRE(err.get_error_code() == expected); \
+}
+
 namespace {
 
 const std::string DATA_FOLDER = "data";
 const std::string DATA_FILE = DATA_FOLDER + "/test.dat";
-
-struct storage_test_fixture {
-    storage_test_fixture() {
-        system(fmt::format("rm {}", DATA_FILE).c_str());
-    }
-    ~storage_test_fixture() = default;
-};
 
 uint8_t get_number_of_digits(size_t num) {
     uint8_t n_digits = 0;
@@ -89,43 +89,45 @@ private:
     data_t data;
 };
 
+struct storage_test_fixture {
+    storage_test_fixture() : storage{DATA_FILE} {
+        generator = seastar::make_lw_shared<data_generator>();
+        system(fmt::format("rm {}", DATA_FILE).c_str());
+    }
+    ~storage_test_fixture() = default;
+    spiderdb::storage storage;
+    seastar::lw_shared_ptr<data_generator> generator;
+};
+
 }
 
 SPIDERDB_TEST_SUITE(storage_test_open_and_close)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_open_then_close, storage_test_fixture) {
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return storage.close().finally([storage] {});
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_open_without_closing, storage_test_fixture) {
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return storage.open().finally([storage] {});
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_close_without_opening, storage_test_fixture) {
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return storage.close().handle_exception([storage](auto ex) {
-        try {
-            std::rethrow_exception(ex);
-        } catch (spiderdb::spiderdb_error& err) {
-            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-        }
+        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_consecutive_opens_and_one_close, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return seastar::do_for_each(it{0}, it{5}, [storage](int i) {
         return storage.open().handle_exception([](auto ex) {
-            try {
-                std::rethrow_exception(ex);
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
-            }
+            SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         });
     }).then([storage] {
         return storage.close().finally([storage] {});
@@ -134,14 +136,10 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_consecutive_opens_and_one_c
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_concurrent_opens_and_one_close, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return seastar::parallel_for_each(it{0}, it{5}, [storage](int i) {
         return storage.open().handle_exception([](auto ex) {
-            try {
-                std::rethrow_exception(ex);
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
-            }
+            SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         });
     }).then([storage] {
         return storage.close().finally([storage] {});
@@ -150,15 +148,11 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_concurrent_opens_and_one_cl
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_consecutive_closes, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return seastar::do_for_each(it{0}, it{5}, [storage](int i) {
             return storage.close().handle_exception([storage](auto ex) {
-                try {
-                    std::rethrow_exception(ex);
-                } catch (spiderdb::spiderdb_error& err) {
-                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-                }
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
             });
         });
     });
@@ -166,15 +160,11 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_consecutive_cl
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_concurrent_closes, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return seastar::parallel_for_each(it{0}, it{5}, [storage](int i) {
             return storage.close().handle_exception([storage](auto ex) {
-                try {
-                    std::rethrow_exception(ex);
-                } catch (spiderdb::spiderdb_error& err) {
-                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-                }
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
             });
         });
     });
@@ -182,7 +172,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_concurrent_clo
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_consecutive_opens_and_closes, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return seastar::do_for_each(it{0}, it{5}, [storage](int i) {
         return storage.open().then([storage] {
             return storage.close().finally([storage] {});
@@ -192,21 +182,13 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_consecutive_opens_and_close
 
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_concurrent_opens_and_closes, storage_test_fixture) {
     using it = boost::counting_iterator<int>;
-    spiderdb::storage storage{DATA_FILE};
+    auto storage = fixture.storage;
     return seastar::parallel_for_each(it{0}, it{5}, [storage](int i) {
         return storage.open().handle_exception([](auto ex) {
-            try {
-                std::rethrow_exception(ex);
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_opened);
-            }
+            SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         }).then([storage] {
             return storage.close().handle_exception([storage](auto ex) {
-                try {
-                    std::rethrow_exception(ex);
-                } catch (spiderdb::spiderdb_error& err) {
-                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-                }
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
             });
         });
     });
@@ -227,11 +209,9 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(storage_test_insert)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_sequential_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -242,11 +222,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_sequential_records_consecutively
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_sequential_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -257,12 +235,10 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_sequential_records_concurrently,
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_random_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -273,12 +249,10 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_random_records_consecutively, st
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_random_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -289,12 +263,10 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_random_records_concurrently, sto
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_records_with_long_key_and_long_value, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -305,12 +277,10 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_records_with_long_key_and_long_v
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_records_with_duplicated_key, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -319,11 +289,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_records_with_duplicated_key, sto
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second)).then_wrapped([](auto fut) {
                 SPIDERDB_REQUIRE(fut.failed());
-                try {
-                    std::rethrow_exception(fut.get_exception());
-                } catch (spiderdb::spiderdb_error &err) {
-                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_exists);
-                }
+                SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_exists);
             });
         });
     }).finally([storage, generator] {
@@ -332,41 +298,27 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_multiple_records_with_duplicated_key, sto
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_records_with_invalid_key_length_or_value_length, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         spiderdb::string key{LONG_KEY_LEN * 10, 0};
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_too_long);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_too_long);
         });
     }).then([storage] {
         spiderdb::string key;
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::empty_key);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::empty_key);
         });
     }).then([storage] {
         spiderdb::string key{LONG_KEY_LEN, 0};
         spiderdb::string value;
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error& err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::empty_value);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::empty_value);
         });
     }).finally([storage] {
         return storage.close().finally([storage] {});
@@ -374,25 +326,17 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_records_with_invalid_key_length_or_value_
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_before_opening, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     spiderdb::string key{LONG_KEY_LEN, 0};
     spiderdb::string value{LONG_VALUE_LEN, 0};
     return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        try {
-            std::rethrow_exception(fut.get_exception());
-        } catch (spiderdb::spiderdb_error &err) {
-            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-        }
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_after_closing, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return storage.close();
     }).then([storage] {
@@ -400,22 +344,16 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_after_closing, storage_test_fixture) {
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error &err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
         });
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_insert_after_reopening, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -441,11 +379,9 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(storage_test_select)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -462,11 +398,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_consecutively
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -483,11 +417,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_sequential_records_concurrently,
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -505,11 +437,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_consecutively, st
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -527,11 +457,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_random_records_concurrently, sto
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_records_with_long_key_and_long_value, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -549,11 +477,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_multiple_records_with_long_key_and_long_v
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_nonexistent_records, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -564,11 +490,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_nonexistent_records, storage_test_fixture
             return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -578,45 +500,31 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_nonexistent_records, storage_test_fixture
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_before_opening, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     spiderdb::string key{LONG_KEY_LEN, 0};
     return storage.select(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        try {
-            std::rethrow_exception(fut.get_exception());
-        } catch (spiderdb::spiderdb_error &err) {
-            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-        }
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_after_closing, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return storage.close();
     }).then([storage] {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return storage.select(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error &err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
         });
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_select_after_reopening, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -642,11 +550,9 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(storage_test_update)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_sequential_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -669,11 +575,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_sequential_records_consecutively
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_sequential_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -696,11 +600,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_sequential_records_concurrently,
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_random_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -724,11 +626,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_random_records_consecutively, st
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_random_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -752,11 +652,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_random_records_concurrently, sto
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_records_with_long_key_and_long_value, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -780,11 +678,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_multiple_records_with_long_key_and_long_v
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_nonexistent_records, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -796,11 +692,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_nonexistent_records, storage_test_fixture
                 return storage.update(std::move(record.first), std::move(record.second));
             }).then_wrapped([](auto fut) {
                 SPIDERDB_REQUIRE(fut.failed());
-                try {
-                    std::rethrow_exception(fut.get_exception());
-                } catch (spiderdb::spiderdb_error &err) {
-                    SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                }
+                SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
             });
         });
     }).finally([storage, generator] {
@@ -809,25 +701,17 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_nonexistent_records, storage_test_fixture
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_before_opening, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     spiderdb::string key{LONG_KEY_LEN, 0};
     spiderdb::string value{LONG_VALUE_LEN, 0};
     return storage.update(std::move(key), std::move(value)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        try {
-            std::rethrow_exception(fut.get_exception());
-        } catch (spiderdb::spiderdb_error &err) {
-            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-        }
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_after_closing, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return storage.close();
     }).then([storage] {
@@ -835,21 +719,15 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_after_closing, storage_test_fixture) {
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.update(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error &err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
         });
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_update_after_reopening, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage, generator](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -887,11 +765,9 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(storage_test_erase)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -905,11 +781,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_consecutively,
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -919,11 +791,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_consecutively,
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -937,11 +807,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_concurrently, 
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -951,11 +817,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_sequential_records_concurrently, 
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_consecutively, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -970,11 +834,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_consecutively, sto
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -984,11 +844,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_consecutively, sto
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_concurrently, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1003,11 +861,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_concurrently, stor
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -1017,11 +871,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_random_records_concurrently, stor
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_records_with_long_key_and_long_value, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, LONG_KEY_LEN, LONG_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1036,11 +888,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_records_with_long_key_and_long_va
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -1050,11 +898,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_multiple_records_with_long_key_and_long_va
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_records_multiple_times, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1069,11 +915,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_records_multiple_times, storage_test_fixtu
             return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
                 return storage.erase(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -1083,11 +925,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_records_multiple_times, storage_test_fixtu
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_nonexistent_records, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1098,11 +938,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_nonexistent_records, storage_test_fixture)
             return seastar::parallel_for_each(generator->get_data(), [storage](auto record) {
                 return storage.erase(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -1112,45 +948,31 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_nonexistent_records, storage_test_fixture)
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_before_opening, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     spiderdb::string key{LONG_KEY_LEN, 0};
     return storage.erase(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        try {
-            std::rethrow_exception(fut.get_exception());
-        } catch (spiderdb::spiderdb_error &err) {
-            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-        }
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_after_closing, storage_test_fixture) {
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
+    auto storage = fixture.storage;
     return storage.open().then([storage] {
         return storage.close();
     }).then([storage] {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return storage.erase(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            try {
-                std::rethrow_exception(fut.get_exception());
-            } catch (spiderdb::spiderdb_error &err) {
-                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::file_already_closed);
-            }
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
         });
     });
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_after_reopening, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage, generator](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1174,11 +996,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_after_reopening, storage_test_fixture) {
                 return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                     return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                         SPIDERDB_REQUIRE(fut.failed());
-                        try {
-                            std::rethrow_exception(fut.get_exception());
-                        } catch (spiderdb::spiderdb_error &err) {
-                            SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                        }
+                        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                     });
                 });
             });
@@ -1189,11 +1007,9 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_after_reopening, storage_test_fixture) {
 }
 
 SPIDERDB_FIXTURE_TEST_CASE(test_erase_all_records, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         return seastar::do_for_each(generator->get_data(), [storage](auto record) {
             return storage.insert(std::move(record.first), std::move(record.second));
@@ -1208,11 +1024,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_all_records, storage_test_fixture) {
             return seastar::do_for_each(generator->get_data(), [storage](auto record) {
                 return storage.select(std::move(record.first)).then_wrapped([](auto fut) {
                     SPIDERDB_REQUIRE(fut.failed());
-                    try {
-                        std::rethrow_exception(fut.get_exception());
-                    } catch (spiderdb::spiderdb_error &err) {
-                        SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                    }
+                    SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                 });
             });
         });
@@ -1226,12 +1038,10 @@ SPIDERDB_TEST_SUITE_END()
 SPIDERDB_TEST_SUITE(storage_test_concurrency)
 
 SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_requests, storage_test_fixture) {
-    auto generator = seastar::make_lw_shared<data_generator>();
+    auto storage = fixture.storage;
+    auto generator = fixture.generator;
     generator->generate_sequential_data(N_RECORDS, 0, SHORT_KEY_LEN, SHORT_VALUE_LEN);
     generator->shuffle_data();
-    spiderdb::spiderdb_config config;
-    config.log_level = seastar::log_level::debug;
-    spiderdb::storage storage{DATA_FILE, config};
     return storage.open().then([storage, generator] {
         using it = boost::counting_iterator<int>;
         const auto N_OPS = static_cast<int>(4 * N_RECORDS);
@@ -1244,11 +1054,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_requests, storage_test_fixture) {
                 case 1: {
                     return storage.select(record.first.clone()).then_wrapped([value{record.second}](auto fut) {
                         if (fut.failed()) {
-                            try {
-                                std::rethrow_exception(fut.get_exception());
-                            } catch (spiderdb::spiderdb_error &err) {
-                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                            }
+                            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                         } else {
                             auto&& updated_value = value + spiderdb::to_string(0);
                             SPIDERDB_CHECK_MESSAGE(fut.get() == value || fut.get() == updated_value, "Wrong result: {}", fut.get());
@@ -1259,22 +1065,14 @@ SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_requests, storage_test_fixture) {
                     auto&& updated_value = record.second + spiderdb::to_string(0);
                     return storage.update(record.first.clone(), std::move(updated_value)).then_wrapped([](auto fut) {
                         if (fut.failed()) {
-                            try {
-                                std::rethrow_exception(fut.get_exception());
-                            } catch (spiderdb::spiderdb_error &err) {
-                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                            }
+                            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                         }
                     });
                 }
                 default: {
                     return storage.erase(record.first.clone()).then_wrapped([](auto fut) {
                         if (fut.failed()) {
-                            try {
-                                std::rethrow_exception(fut.get_exception());
-                            } catch (spiderdb::spiderdb_error &err) {
-                                SPIDERDB_REQUIRE(err.get_error_code() == spiderdb::error_code::key_not_exists);
-                            }
+                            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_not_exists);
                         }
                     });
                 }
