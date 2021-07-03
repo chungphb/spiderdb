@@ -53,5 +53,4 @@ inline const char* page_type_to_string(page_type type) {
     }
 }
 
-
 }

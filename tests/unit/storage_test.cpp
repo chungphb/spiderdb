@@ -118,7 +118,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_open_without_closing, storage_test_f
 SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_close_without_opening, storage_test_fixture) {
     auto storage = fixture.storage;
     return storage.close().handle_exception([storage](auto ex) {
-        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
     });
 }
 
@@ -152,7 +152,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_consecutive_cl
     return storage.open().then([storage] {
         return seastar::do_for_each(it{0}, it{5}, [storage](int i) {
             return storage.close().handle_exception([storage](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -164,7 +164,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_one_open_and_multiple_concurrent_clo
     return storage.open().then([storage] {
         return seastar::parallel_for_each(it{0}, it{5}, [storage](int i) {
             return storage.close().handle_exception([storage](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -188,7 +188,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_storage_multiple_concurrent_opens_and_closes
             SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         }).then([storage] {
             return storage.close().handle_exception([storage](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -311,14 +311,14 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_records_with_invalid_key_length_or_value_
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::empty_key);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_too_short);
         });
     }).then([storage] {
         spiderdb::string key{LONG_KEY_LEN, 0};
         spiderdb::string value;
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::empty_value);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::value_too_short);
         });
     }).finally([storage] {
         return storage.close().finally([storage] {});
@@ -331,7 +331,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_before_opening, storage_test_fixture) {
     spiderdb::string value{LONG_VALUE_LEN, 0};
     return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -344,7 +344,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_insert_after_closing, storage_test_fixture) {
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.insert(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }
@@ -504,7 +504,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_before_opening, storage_test_fixture) {
     spiderdb::string key{LONG_KEY_LEN, 0};
     return storage.select(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -516,7 +516,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_select_after_closing, storage_test_fixture) {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return storage.select(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }
@@ -706,7 +706,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_before_opening, storage_test_fixture) {
     spiderdb::string value{LONG_VALUE_LEN, 0};
     return storage.update(std::move(key), std::move(value)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -719,7 +719,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_update_after_closing, storage_test_fixture) {
         spiderdb::string value{LONG_VALUE_LEN, 0};
         return storage.update(std::move(key), std::move(value)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }
@@ -952,7 +952,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_before_opening, storage_test_fixture) {
     spiderdb::string key{LONG_KEY_LEN, 0};
     return storage.erase(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -964,7 +964,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_erase_after_closing, storage_test_fixture) {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return storage.erase(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }

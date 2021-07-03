@@ -134,7 +134,7 @@ seastar::future<> storage_impl::flush() {
 
 seastar::future<> storage_impl::close() {
     if (!is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return btree_impl::close().then([] {
         SPIDERDB_LOGGER_INFO("Closed storage");
@@ -318,95 +318,77 @@ storage& storage::operator=(storage&& other) noexcept {
 
 const spiderdb_config& storage::get_config() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_storage};
+        throw spiderdb_error{error_code::closed_error};
     }
     return _impl->_config;
 }
 
 seastar::future<> storage::open() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->open();
 }
 
 seastar::future<> storage::close() const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->close();
 }
 
 seastar::future<> storage::insert(string&& key, string&& value) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_short});
     }
     if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->_config.min_keys_on_each_node) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_long});
     }
     if (value.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_value});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::value_too_short});
     }
     return _impl->insert(std::move(key), std::move(value));
 }
 
 seastar::future<> storage::update(string&& key, string&& value) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_short});
     }
     if (value.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_value});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::value_too_short});
     }
     return _impl->update(std::move(key), std::move(value));
 }
 
 seastar::future<> storage::erase(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_storage});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->erase(std::move(key));
 }
 
 seastar::future<string> storage::select(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_storage});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->select(std::move(key));
 }
 
 void storage::log() const {
-    if (!_impl) {
-        throw spiderdb_error{error_code::invalid_storage};
-    }
-    if (!_impl->is_open()) {
-        throw spiderdb_error{error_code::file_already_closed};
+    if (!_impl || !_impl->is_open()) {
+        throw spiderdb_error{error_code::closed_error};
     }
     _impl->log();
 }

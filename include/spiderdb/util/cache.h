@@ -23,19 +23,20 @@ struct cache {
 public:
     cache() = delete;
 
-    cache(size_t capacity, evictor_t evictor) : _capacity{capacity}, _evictor{std::move(evictor)} {}
+    cache(size_t capacity, evictor_t&& evictor) : _capacity{capacity}, _evictor{std::move(evictor)} {}
 
     ~cache() = default;
 
     seastar::future<> put(key_t key, value_t value) {
-        return seastar::with_lock(_lock, [this, key{std::forward<key_t>(key)}, value{std::forward<value_t>(value)}] {
+        return seastar::with_lock(_lock, [this, key{std::move(key)}, value{std::move(value)}] {
             _items.push_front({key, value});
             auto iterator_it = _iterators.find(key);
-            if (iterator_it != _iterators.end()) {
+            if (iterator_it == _iterators.end()) {
+                _iterators[key] = _items.begin();
+            } else {
                 _items.erase(iterator_it->second);
-                _iterators.erase(iterator_it);
+                iterator_it->second = _items.begin();
             }
-            _iterators[key] = _items.begin();
             return seastar::do_until([this] {
                 return _items.size() <= _capacity;
             }, [this] {
@@ -48,7 +49,7 @@ public:
     }
 
     seastar::future<value_t> get(key_t key) {
-        return seastar::with_lock(_lock, [this, key{std::forward<key_t>(key)}] {
+        return seastar::with_lock(_lock, [this, key{std::move(key)}] {
             auto iterator_it = _iterators.find(key);
             if (iterator_it == _iterators.end()) {
                 return seastar::make_exception_future<value_t>(cache_error{"Item not exists"});

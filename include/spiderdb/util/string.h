@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/simple-stream.hh>
 #include <type_traits>
 
@@ -25,27 +24,12 @@ struct basic_string {
 public:
     basic_string() = default;
 
-    basic_string(char_t* data, size_t len) {
-        if (len == 0) {
-            return;
-        }
-        if (!data) {
-            throw std::invalid_argument("Non-zero length empty string");
-        }
-        _data = static_cast<char_t*>(std::malloc(sizeof(char_t) * len));
-        if (!_data) {
-            throw std::bad_alloc();
-        }
-        memcpy(_data, data, len);
-        _len = len;
-    }
-
     basic_string(const char_t* data, size_t len) {
         if (len == 0) {
             return;
         }
         if (!data) {
-            throw std::invalid_argument("Non-zero length empty string");
+            throw std::invalid_argument("String: Invalid construction");
         }
         _data = static_cast<char_t*>(std::malloc(sizeof(char_t) * len));
         if (!_data) {
@@ -64,14 +48,19 @@ public:
         _len = len;
     }
 
-    basic_string(std::basic_string<char_t> str) : basic_string(str.c_str(), str.length()) {}
+    explicit basic_string(const std::basic_string<char_t>& str) : basic_string{str.c_str(), str.length()} {}
 
-    basic_string(seastar::temporary_buffer<char_t>&& buffer) : basic_string(buffer.get(), buffer.size()) {}
+    explicit basic_string(std::basic_string<char_t>& str) : basic_string{str.c_str(), str.length()} {}
 
-    basic_string(const basic_string& str) : basic_string(str._data, str._len) {}
+    explicit basic_string(const char* data) : basic_string{static_cast<const char_t*>(data), std::strlen(data)} {}
+
+    explicit basic_string(std::basic_string_view<char_t> view) : basic_string{view.data(), view.length()} {}
+
+    basic_string(const basic_string& str) : basic_string{str._data, str._len} {}
 
     basic_string<char_t>& operator=(const basic_string& str) {
         if (this != &str) {
+            this->~basic_string();
             new (this) basic_string(str);
         }
         return *this;
@@ -119,29 +108,28 @@ public:
     }
 
     char_t& operator[](size_t id) {
-        if (!_data) {
-            throw std::out_of_range("Access an empty string");
-        }
-        if (id < 0 || id >= _len) {
-            throw std::out_of_range("Invalid access to string");
+        if (!_data || id >= _len) {
+            throw std::out_of_range("String: Invalid access");
         }
         return _data[id];
     }
 
     const char_t& operator[](size_t id) const {
-        if (!_data) {
-            throw std::out_of_range("Access an empty string");
-        }
-        if (id < 0 || id >= _len) {
-            throw std::out_of_range("Invalid access to string");
+        if (!_data || id >= _len) {
+            throw std::out_of_range("String: Invalid access");
         }
         return _data[id];
     }
 
     basic_string operator+(const basic_string& str) const {
-        basic_string res{size() + str.size(), 0};
-        memcpy(res.str(), c_str(), length());
-        memcpy(res.str() + length(), str.c_str(), str.length());
+        basic_string res;
+        res._data = static_cast<char_t*>(std::malloc(sizeof(char_t) * (_len + str._len)));
+        if (!res._data) {
+            throw std::bad_alloc();
+        }
+        res._len = _len + str._len;
+        memcpy(res._data, _data, _len);
+        memcpy(res._data + _len, str._data, str._len);
         return res;
     }
 
@@ -149,12 +137,12 @@ public:
         return *this = *this + str;
     }
 
-    bool operator==(const basic_string<char_t>& str) const {
-        if (_len != str._len) {
-            return false;
-        }
+    bool operator==(const basic_string<char_t>& str) const noexcept {
         if (_data == str._data) {
             return true;
+        }
+        if (_len != str._len) {
+            return false;
         }
         for (size_t id = 0; id < _len; ++id) {
             if (_data[id] != str._data[id]) {
@@ -164,11 +152,14 @@ public:
         return true;
     }
 
-    bool operator!=(const basic_string<char_t>& str) const {
+    bool operator!=(const basic_string<char_t>& str) const noexcept {
         return !operator==(str);
     }
 
-    bool operator<(const basic_string<char_t>& str) const {
+    bool operator<(const basic_string<char_t>& str) const noexcept {
+        if (_data == str._data) {
+            return false;
+        }
         const auto min_len = std::min(_len, str._len);
         for (size_t id = 0; id < min_len; ++id) {
             if (_data[id] < str._data[id]) {
@@ -181,11 +172,14 @@ public:
         return _len < str._len;
     }
 
-    bool operator>=(const basic_string<char_t>& str) const {
+    bool operator>=(const basic_string<char_t>& str) const noexcept {
         return !operator<(str);
     }
 
-    bool operator>(const basic_string<char_t>& str) const {
+    bool operator>(const basic_string<char_t>& str) const noexcept {
+        if (_data == str._data) {
+            return false;
+        }
         const auto min_len = std::min(_len, str._len);
         for (size_t id = 0; id < min_len; ++id) {
             if (_data[id] > str._data[id]) {
@@ -198,7 +192,7 @@ public:
         return _len > str._len;
     }
 
-    bool operator<=(const basic_string<char_t>& str) const {
+    bool operator<=(const basic_string<char_t>& str) const noexcept {
         return !operator>(str);
     }
 
@@ -207,22 +201,26 @@ public:
     }
 
     seastar::simple_memory_input_stream get_input_stream() const {
-        return seastar::simple_memory_input_stream(_data, _len);
+        return seastar::simple_memory_input_stream{_data, _len};
     }
 
-    friend std::hash<basic_string>;
-
-    friend std::ostream& operator<<(std::ostream& os, basic_string str) {
-        for (size_t id = 0; id < str.length(); id++) {
-            os << str[id];
-        }
-        return os;
+    explicit operator std::basic_string_view<char_t>() const noexcept {
+        static_assert(noexcept(std::basic_string_view<char_t>(_data, _len)));
+        return std::basic_string_view<char_t>(_data, _len);
     }
 
 private:
     char_t* _data = nullptr;
     size_t _len = 0;
 };
+
+template <typename char_t>
+std::basic_ostream<char_t>& operator<<(std::basic_ostream<char_t>& os, const basic_string<char_t>& str) {
+    for (size_t id = 0; id < str.length(); ++id) {
+        os << str[id];
+    }
+    return os;
+}
 
 namespace internal {
 
@@ -277,6 +275,7 @@ string_t to_string(double val) {
 }
 
 using string = basic_string<char>;
+using string_view = std::basic_string_view<char>;
 
 template <typename string_t = string, typename value_t>
 string_t to_string(value_t val) {
@@ -285,9 +284,13 @@ string_t to_string(value_t val) {
 
 }
 
+namespace std {
+
 template <typename char_t>
-struct std::hash<spiderdb::basic_string<char_t>> {
+struct hash<spiderdb::basic_string<char_t>> {
     size_t operator()(const spiderdb::basic_string<char_t>& str) const {
-        return std::hash<char_t*>{}(str._data) * std::hash<int>{}(static_cast<int>(str._len));
+        return std::hash<std::basic_string_view<char_t>>()(str);
     }
 };
+
+}

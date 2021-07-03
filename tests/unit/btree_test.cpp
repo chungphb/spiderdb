@@ -112,7 +112,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_btree_open_without_closing, btree_test_fixtu
 SPIDERDB_FIXTURE_TEST_CASE(test_one_btree_close_without_opening, btree_test_fixture) {
     auto btree = fixture.btree;
     return btree.close().handle_exception([btree](auto ex) {
-        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
     });
 }
 
@@ -146,7 +146,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_btree_one_open_and_multiple_consecutive_clos
     return btree.open().then([btree] {
         return seastar::do_for_each(it{0}, it{5}, [btree](int i) {
             return btree.close().handle_exception([btree](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -158,7 +158,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_btree_one_open_and_multiple_concurrent_close
     return btree.open().then([btree] {
         return seastar::parallel_for_each(it{0}, it{5}, [btree](int i) {
             return btree.close().handle_exception([btree](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -182,7 +182,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_btree_multiple_concurrent_opens_and_closes, 
             SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         }).then([btree] {
             return btree.close().handle_exception([btree](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -305,7 +305,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_records_with_invalid_key_length, btree_test_
         spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::empty_key);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_too_short);
         });
     }).finally([btree] {
         return btree.close().finally([btree] {});
@@ -318,7 +318,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_before_opening, btree_test_fixture) {
     spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
     return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -331,7 +331,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_after_closing, btree_test_fixture) {
         spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }
@@ -491,7 +491,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_before_opening, btree_test_fixture) {
     spiderdb::string key{LONG_KEY_LEN, 0};
     return btree.find(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -503,7 +503,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_closing, btree_test_fixture) {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return btree.find(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }
@@ -750,7 +750,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_before_opening, btree_test_fixture) {
     spiderdb::string key{LONG_KEY_LEN, 0};
     return btree.remove(std::move(key)).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     });
 }
 
@@ -762,7 +762,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_after_closing, btree_test_fixture) {
         spiderdb::string key{LONG_KEY_LEN, 0};
         return btree.remove(std::move(key)).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         });
     });
 }

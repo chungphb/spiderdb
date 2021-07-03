@@ -49,10 +49,10 @@ uint32_t page_impl::get_work_size() const noexcept {
 
 seastar::future<> page_impl::load(seastar::file file) {
     if (!file) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         const auto page_offset = _config.file_header_size + _id * _config.page_size;
@@ -83,10 +83,10 @@ seastar::future<> page_impl::load(seastar::file file) {
 
 seastar::future<> page_impl::flush(seastar::file file) {
     if (!file) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
         seastar::temporary_buffer<char> buffer{_data.str(), _data.size()};
@@ -113,7 +113,7 @@ seastar::future<> page_impl::flush(seastar::file file) {
 
 seastar::future<> page_impl::write(seastar::simple_memory_input_stream& is) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return seastar::with_lock(_rwlock.for_write(), [this, &is] {
         _header->_data_len = std::min(get_work_size(), static_cast<uint32_t>(is.size()));
@@ -126,7 +126,7 @@ seastar::future<> page_impl::write(seastar::simple_memory_input_stream& is) {
 
 seastar::future<> page_impl::read(seastar::simple_memory_output_stream& os) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return seastar::with_lock(_rwlock.for_read(), [this, &os] {
         if (_header->_data_len > 0) {
@@ -172,112 +172,112 @@ page& page::operator=(page&& other_page) noexcept {
 
 page_id page::get_id() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->_id;
 }
 
 seastar::weak_ptr<page_impl> page::get_pointer() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->weak_from_this();
 }
 
 seastar::shared_ptr<page_header> page::get_header() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->_header;
 }
 
 uint32_t page::get_work_size() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->get_work_size();
 }
 
 uint32_t page::get_record_length() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->_header->_record_len;
 }
 
 page_id page::get_next_page() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->_header->_next;
 }
 
 page_type page::get_type() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     return _impl->_header->_type;
 }
 
 void page::set_header(seastar::shared_ptr<page_header> header) {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     _impl->_header = std::move(header);
 }
 
 void page::set_record_length(uint32_t record_len) {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     _impl->_header->_record_len = record_len;
 }
 
 void page::set_next_page(page_id next) {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     _impl->_header->_next = next;
 }
 
 void page::set_type(page_type type) {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     _impl->_header->_type = type;
 }
 
 seastar::future<> page::load(seastar::file file) {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return _impl->load(std::move(file));
 }
 
 seastar::future<> page::flush(seastar::file file) {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return _impl->flush(std::move(file));
 }
 
 seastar::future<> page::write(seastar::simple_memory_input_stream& is) {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return _impl->write(is);
 }
 
 seastar::future<> page::read(seastar::simple_memory_output_stream& os) {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return _impl->read(os);
 }
 
 void page::log() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_page};
+        throw spiderdb_error{error_code::page_unavailable};
     }
     _impl->log();
 }

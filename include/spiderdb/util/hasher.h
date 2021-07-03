@@ -8,7 +8,7 @@
 
 namespace spiderdb {
 
-size_t hasher(string&& str);
+size_t hasher(string_view str);
 
 }
 

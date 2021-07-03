@@ -54,7 +54,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_file_open_without_closing, file_test_fixture
 SPIDERDB_FIXTURE_TEST_CASE(test_one_file_close_without_opening, file_test_fixture) {
     auto file = fixture.file;
     return file.close().handle_exception([file](auto ex) {
-        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
     });
 }
 
@@ -88,7 +88,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_file_one_open_and_multiple_consecutive_close
     return file.open().then([file] {
         return seastar::do_for_each(it{0}, it{5}, [file](int i) {
             return file.close().handle_exception([file](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -100,7 +100,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_file_one_open_and_multiple_concurrent_closes
     return file.open().then([file] {
         return seastar::parallel_for_each(it{0}, it{5}, [file](int i) {
             return file.close().handle_exception([file](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -124,7 +124,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_one_file_multiple_concurrent_opens_and_closes, f
             SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_opened);
         }).then([file] {
             return file.close().handle_exception([file](auto ex) {
-                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+                SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
             });
         });
     });
@@ -166,7 +166,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_an_empty_string, file_test_fixture) {
             try {
                 std::rethrow_exception(ex);
             } catch (std::invalid_argument& err) {
-                SPIDERDB_REQUIRE(strcmp(err.what(), "Write empty data") == 0);
+                SPIDERDB_REQUIRE(strcmp(err.what(), "Empty data") == 0);
             }
         });
     }).finally([file] {
@@ -180,7 +180,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_before_opening, file_test_fixture) {
     return file.write(str).then([](auto page_id) {
         SPIDERDB_REQUIRE(false);
     }).handle_exception([](auto ex) {
-        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
     }).finally([file] {});
 }
 
@@ -193,7 +193,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_after_closing, file_test_fixture) {
         return file.write(str).then([](auto page_id) {
             SPIDERDB_REQUIRE(false);
         }).handle_exception([](auto ex) {
-            SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::closed_error);
         }).finally([file] {});
     });
 }
@@ -272,16 +272,16 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_a_regular_page, file_test_fixture) {
     });
 }
 
-SPIDERDB_FIXTURE_TEST_CASE(test_read_invalid_pages, file_test_fixture) {
+SPIDERDB_FIXTURE_TEST_CASE(test_read_page_unavailables, file_test_fixture) {
     auto file = fixture.file;
     return file.open().then([file] {
         return file.read(spiderdb::null_page).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::invalid_page);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::page_unavailable);
         }).then([file] {
             return file.read(spiderdb::page_id{INT64_MAX}).then_wrapped([](auto fut) {
                 SPIDERDB_REQUIRE(fut.failed());
-                SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::invalid_page);
+                SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::page_unavailable);
             });
         });
     }).finally([file] {
@@ -293,7 +293,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_before_opening, file_test_fixture) {
     auto file = fixture.file;
     return file.read(spiderdb::page_id{0}).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
-        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+        SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
     }).finally([file] {});
 }
 
@@ -304,7 +304,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_read_after_closing, file_test_fixture) {
     }).then([file] {
         return file.read(spiderdb::page_id{0}).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
-            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::file_already_closed);
+            SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
         }).finally([file] {});
     });
 }

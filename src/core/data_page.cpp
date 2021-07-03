@@ -40,7 +40,7 @@ data_page_impl::data_page_impl(page page, seastar::weak_ptr<storage_impl>&& stor
 
 seastar::future<> data_page_impl::load() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     if (_loaded) {
         return seastar::now();
@@ -70,7 +70,7 @@ seastar::future<> data_page_impl::load() {
 
 seastar::future<> data_page_impl::flush() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     if (_page.get_type() != node_type::data) {
         return seastar::now();
@@ -100,7 +100,7 @@ seastar::future<> data_page_impl::flush() {
 
 seastar::future<value_id> data_page_impl::add(string&& value) {
     if (!is_valid()) {
-        return seastar::make_exception_future<value_id>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<value_id>(spiderdb_error{error_code::data_page_unavailable});
     }
     return seastar::with_lock(_rwlock.for_write(), [this, value{std::move(value)}]() mutable {
         auto value_len = value.length();
@@ -118,7 +118,7 @@ seastar::future<value_id> data_page_impl::add(string&& value) {
 
 seastar::future<> data_page_impl::update(value_id id, string&& value) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     if (id < 0 || id >= _values.size() || _values[id].empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::value_not_exists});
@@ -137,7 +137,7 @@ seastar::future<> data_page_impl::update(value_id id, string&& value) {
 
 seastar::future<> data_page_impl::remove(value_id id) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     if (id < 0 || id >= _values.size() || _values[id].empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::value_not_exists});
@@ -159,7 +159,7 @@ seastar::future<> data_page_impl::remove(value_id id) {
 
 seastar::future<string> data_page_impl::find(value_id id) {
     if (!is_valid()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::data_page_unavailable});
     }
     if (id < 0 || id >= _values.size() || _values[id].empty()) {
         return seastar::make_exception_future<string>(spiderdb_error{error_code::value_not_exists});
@@ -185,7 +185,7 @@ seastar::future<> data_page_impl::cache(data_page data_page) {
 
 seastar::future<> data_page_impl::clean() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     _page.set_type(node_type::unused);
     _data_len = 0;
@@ -234,91 +234,91 @@ bool data_page::operator!() const noexcept {
 
 page_id data_page::get_id() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     return _impl->_page.get_id();
 }
 
 seastar::weak_ptr<data_page_impl> data_page::get_pointer() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     return _impl->weak_from_this();
 }
 
 page data_page::get_page() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     return _impl->_page;
 }
 
 const std::vector<string>& data_page::get_value_list() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     return _impl->_values;
 }
 
 size_t data_page::get_data_length() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     return _impl->_data_len;
 }
 
 void data_page::mark_dirty() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     _impl->_dirty = true;
 }
 
 seastar::future<> data_page::load() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->load();
 }
 
 seastar::future<> data_page::flush() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->flush();
 }
 
 seastar::future<value_id> data_page::add(string&& value) const {
     if (!_impl) {
-        return seastar::make_exception_future<value_id>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<value_id>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->add(std::move(value));
 }
 
 seastar::future<> data_page::update(value_id id, string&& value) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->update(id, std::move(value));
 }
 
 seastar::future<> data_page::remove(value_id id) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->remove(id);
 }
 
 seastar::future<string> data_page::find(value_id id) const {
     if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_data_page});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::data_page_unavailable});
     }
     return _impl->find(id);
 }
 
 void data_page::log() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_data_page};
+        throw spiderdb_error{error_code::data_page_unavailable};
     }
     _impl->log();
 }

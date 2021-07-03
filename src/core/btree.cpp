@@ -59,7 +59,7 @@ seastar::future<> btree_impl::open() {
                         return _root.load();
                     }
                     default: {
-                        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
+                        return seastar::make_exception_future<>(spiderdb_error{error_code::page_type_incorrect});
                     }
                 }
             }).then([this] {
@@ -83,7 +83,7 @@ seastar::future<> btree_impl::flush() {
 
 seastar::future<> btree_impl::close() {
     if (!btree_impl::is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     auto root = std::move(_root);
     return root.flush().finally([this, root] {
@@ -199,37 +199,31 @@ btree& btree::operator=(btree&& other) noexcept {
 
 const spiderdb_config& btree::get_config() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_btree};
+        throw spiderdb_error{error_code::closed_error};
     }
     return _impl->_config;
 }
 
 seastar::future<> btree::open() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_file});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->open();
 }
 
 seastar::future<> btree::close() const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->close();
 }
 
 seastar::future<> btree::add(string&& key, data_pointer ptr) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_btree});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_short});
     }
     if (key.length() > _impl->get_root().get_page().get_work_size() / _impl->_config.min_keys_on_each_node) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::key_too_long});
@@ -238,37 +232,28 @@ seastar::future<> btree::add(string&& key, data_pointer ptr) const {
 }
 
 seastar::future<data_pointer> btree::remove(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_btree});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->remove(std::move(key));
 }
 
 seastar::future<data_pointer> btree::find(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_btree});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::empty_key});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->find(std::move(key));
 }
 
 void btree::log() const {
-    if (!_impl) {
-        throw spiderdb_error{error_code::invalid_btree};
-    }
-    if (!_impl->is_open()) {
-        throw spiderdb_error{error_code::file_already_closed};
+    if (!_impl || !_impl->is_open()) {
+        throw spiderdb_error{error_code::closed_error};
     }
     _impl->log();
 }

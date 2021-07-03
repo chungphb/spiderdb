@@ -33,28 +33,28 @@ seastar::future<> spiderdb_impl::close() {
 }
 
 seastar::future<> spiderdb_impl::insert(string&& key, string&& value) {
-    auto shard = hasher(key.clone()) % seastar::smp::count;
+    auto shard = hasher((string_view)key) % seastar::smp::count;
     return _storage.invoke_on(shard, [key{std::move(key)}, value{std::move(value)}](auto& storage) mutable {
         return storage.insert(std::move(key), std::move(value));
     });
 }
 
 seastar::future<> spiderdb_impl::update(string&& key, string&& value) {
-    auto shard = hasher(key.clone()) % seastar::smp::count;
+    auto shard = hasher((string_view)key) % seastar::smp::count;
     return _storage.invoke_on(shard, [key{std::move(key)}, value{std::move(value)}](auto& storage) mutable {
         return storage.update(std::move(key), std::move(value));
     });
 }
 
 seastar::future<> spiderdb_impl::erase(string&& key) {
-    auto shard = hasher(key.clone()) % seastar::smp::count;
+    auto shard = hasher((string_view)key) % seastar::smp::count;
     return _storage.invoke_on(shard, [key{std::move(key)}](auto& storage) mutable {
         return storage.erase(std::move(key));
     });
 }
 
 seastar::future<string> spiderdb_impl::select(string&& key) {
-    auto shard = hasher(key.clone()) % seastar::smp::count;
+    auto shard = hasher((string_view)key) % seastar::smp::count;
     return _storage.invoke_on(shard, [key{std::move(key)}](auto& storage) mutable {
         return storage.select(std::move(key));
     });
@@ -88,64 +88,49 @@ spiderdb& spiderdb::operator=(spiderdb&& other) noexcept {
 
 const spiderdb_config& spiderdb::get_config() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_database};
+        throw spiderdb_error{error_code::closed_error};
     }
     return _impl->_config;
 }
 
 seastar::future<> spiderdb::open() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_database});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->open();
 }
 
 seastar::future<> spiderdb::close() const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_database});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->close();
 }
 
 seastar::future<> spiderdb::insert(string&& key, string&& value) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_database});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->insert(std::move(key), std::move(value));
 }
 
 seastar::future<> spiderdb::update(string&& key, string&& value) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_database});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->update(std::move(key), std::move(value));
 }
 
 seastar::future<> spiderdb::erase(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_database});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->erase(std::move(key));
 }
 
 seastar::future<string> spiderdb::select(string&& key) const {
-    if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_database});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::closed_error});
     }
     return _impl->select(std::move(key));
 }

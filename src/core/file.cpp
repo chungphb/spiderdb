@@ -102,7 +102,7 @@ seastar::future<> file_impl::flush() {
 seastar::future<> file_impl::close() {
     return flush().then([this] {
         if (!file_impl::is_open()) {
-            return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+            return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
         }
         auto file = std::move(_file);
         return file.close().finally([this] {
@@ -194,7 +194,7 @@ seastar::future<string> file_impl::read(page first) {
             });
         });
     }).then([buffer{buffer.share()}]() mutable {
-        return seastar::make_ready_future<string>(std::move(buffer));
+        return seastar::make_ready_future<string>(buffer.begin(), buffer.size());
     });
 }
 
@@ -268,7 +268,7 @@ seastar::future<page> file_impl::get_free_page() {
 
 seastar::future<page> file_impl::get_or_create_page(page_id id) {
     if (id < 0 || id > _file_header->_page_count) {
-        return seastar::make_exception_future<page>(spiderdb_error{error_code::invalid_page});
+        return seastar::make_exception_future<page>(spiderdb_error{error_code::page_unavailable});
     }
     auto page_it = _pages.find(id);
     if (page_it != _pages.end() && page_it->second) {
@@ -306,57 +306,45 @@ file& file::operator=(file&& other) noexcept {
 
 const spiderdb_config& file::get_config() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_file};
+        throw spiderdb_error{error_code::closed_error};
     }
     return _impl->_config;
 }
 
 seastar::future<> file::open() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_file});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->open();
 }
 
 seastar::future<> file::close() const {
-    if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_file});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
     return _impl->close();
 }
 
 seastar::future<page_id> file::write(string data) const {
-    if (!_impl) {
-        return seastar::make_exception_future<page_id>(spiderdb_error{error_code::invalid_file});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<page_id>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<page_id>(spiderdb_error{error_code::closed_error});
     }
     if (data.empty()) {
-        return seastar::make_exception_future<page_id>(std::invalid_argument("Write empty data"));
+        return seastar::make_exception_future<page_id>(std::invalid_argument("Empty data"));
     }
     return _impl->write(std::move(data));
 }
 
 seastar::future<string> file::read(page_id id) const {
-    if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_file});
-    }
-    if (!_impl->is_open()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::file_already_closed});
+    if (!_impl || !_impl->is_open()) {
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::closed_error});
     }
     return _impl->read(id);
 }
 
 void file::log() const {
-    if (!_impl) {
-        throw spiderdb_error{error_code::invalid_file};
-    }
-    if (!_impl->is_open()) {
-        throw spiderdb_error{error_code::file_already_closed};
+    if (!_impl || !_impl->is_open()) {
+        throw spiderdb_error{error_code::closed_error};
     }
     _impl->log();
 }

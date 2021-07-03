@@ -22,13 +22,6 @@ SPIDERDB_TEST_CASE(test_create_string) {
         SPIDERDB_CHECK(!str.empty());
         SPIDERDB_CHECK(strcmp(str.c_str(), "String") == 0);
     }
-    { // Create a string using seastar::temporary_buffer
-        const char* data = "String";
-        seastar::temporary_buffer<char> buffer{data, strlen(data)};
-        spiderdb::string str{std::move(buffer)};
-        SPIDERDB_CHECK(!str.empty());
-        SPIDERDB_CHECK(strcmp(str.c_str(), "String") == 0);
-    }
     { // Create a string using char arrays
         char arr[] = "String";
         const size_t len = sizeof(arr) / sizeof(*arr);
@@ -81,7 +74,7 @@ SPIDERDB_TEST_CASE(test_empty_string) {
             spiderdb::string str{data, len};
             SPIDERDB_REQUIRE(false);
         } catch (std::invalid_argument& err) {
-            SPIDERDB_CHECK(strcmp(err.what(), "Non-zero length empty string") == 0);
+            SPIDERDB_CHECK(strcmp(err.what(), "String: Invalid construction") == 0);
         }
     }
     return seastar::now();
@@ -142,13 +135,13 @@ SPIDERDB_TEST_CASE(test_access_string) {
             auto& c = str[6];
             SPIDERDB_REQUIRE(false);
         } catch (std::out_of_range& err) {
-            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access to string") == 0);
+            SPIDERDB_CHECK(strcmp(err.what(), "String: Invalid access") == 0);
         }
         try {
             auto& c = str[-1];
             SPIDERDB_REQUIRE(false);
         } catch (std::out_of_range& err) {
-            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access to string") == 0);
+            SPIDERDB_CHECK(strcmp(err.what(), "String: Invalid access") == 0);
         }
     }
     { // Test update a string
@@ -159,16 +152,16 @@ SPIDERDB_TEST_CASE(test_access_string) {
             str[6] = '0';
             SPIDERDB_REQUIRE(false);
         } catch (std::out_of_range& err) {
-            SPIDERDB_CHECK(strcmp(err.what(), "Invalid access to string") == 0);
+            SPIDERDB_CHECK(strcmp(err.what(), "String: Invalid access") == 0);
         }
     }
-    { // Test access an empty string
+    { // Test String: Invalid access
         spiderdb::string str;
         try {
             auto& c = str[0];
             SPIDERDB_REQUIRE(false);
         } catch (std::out_of_range& err) {
-            SPIDERDB_CHECK(strcmp(err.what(), "Access an empty string") == 0);
+            SPIDERDB_CHECK(strcmp(err.what(), "String: Invalid access") == 0);
         }
     }
     return seastar::now();

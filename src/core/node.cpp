@@ -58,7 +58,7 @@ node_impl::node_impl(page page, seastar::weak_ptr<btree_impl>&& btree, seastar::
 
 seastar::future<> node_impl::load() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     if (_loaded) {
         return seastar::now();
@@ -125,7 +125,7 @@ seastar::future<> node_impl::load() {
 
 seastar::future<> node_impl::flush() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     if (_page.get_type() != node_type::internal && _page.get_type() != node_type::leaf) {
         return seastar::now();
@@ -182,7 +182,7 @@ seastar::future<> node_impl::flush() {
 
 seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return seastar::with_semaphore(_lock, 1, [this, key{std::move(key)}, ptr]() mutable {
         auto id = binary_search(key, 0, _keys.size() - 1);
@@ -208,7 +208,7 @@ seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
                 return split();
             }
             default: {
-                return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
+                return seastar::make_exception_future<>(spiderdb_error{error_code::page_type_incorrect});
             }
         }
     }).then([this] {
@@ -218,7 +218,7 @@ seastar::future<> node_impl::add(string&& key, data_pointer ptr) {
 
 seastar::future<data_pointer> node_impl::remove(string&& key) {
     if (!is_valid()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::node_unavailable});
     }
     return seastar::with_semaphore(_lock, 1, [this, key{std::move(key)}]() mutable {
         auto id = binary_search(key, 0, _keys.size() - 1);
@@ -251,7 +251,7 @@ seastar::future<data_pointer> node_impl::remove(string&& key) {
                 });
             }
             default: {
-                return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_page_type});
+                return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::page_type_incorrect});
             }
         }
     }).then([this](auto result) {
@@ -263,7 +263,7 @@ seastar::future<data_pointer> node_impl::remove(string&& key) {
 
 seastar::future<data_pointer> node_impl::find(string&& key) {
     if (!is_valid()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::node_unavailable});
     }
     if (_next != null_node && key > _high_key) {
         return _btree->get_node(_next).then([key](auto next) mutable {
@@ -286,7 +286,7 @@ seastar::future<data_pointer> node_impl::find(string&& key) {
                 return seastar::make_ready_future<data_pointer>(_pointers[id].pointer);
             }
             default: {
-                return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_page_type});
+                return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::page_type_incorrect});
             }
         }
     }).then([this](auto result) {
@@ -298,7 +298,7 @@ seastar::future<data_pointer> node_impl::find(string&& key) {
 
 seastar::future<node> node_impl::get_parent() {
     if (!is_valid()) {
-        return seastar::make_exception_future<node>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<node>(spiderdb_error{error_code::node_unavailable});
     }
     if (_parent) {
         return seastar::make_ready_future<node>(_parent->shared_from_this());
@@ -318,13 +318,13 @@ seastar::future<node> node_impl::get_parent() {
 
 seastar::future<node> node_impl::get_child(uint32_t id) {
     if (!is_valid()) {
-        return seastar::make_exception_future<node>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<node>(spiderdb_error{error_code::node_unavailable});
     }
     if (_page.get_type() != node_type::internal) {
-        return seastar::make_exception_future<node>(spiderdb_error{error_code::invalid_page_type});
+        return seastar::make_exception_future<node>(spiderdb_error{error_code::page_type_incorrect});
     }
     if (id < 0 || id >= _pointers.size()) {
-        return seastar::make_exception_future<node>(spiderdb_error{error_code::child_not_exists});
+        return seastar::make_exception_future<node>(spiderdb_error{error_code::node_child_not_exists});
     }
     return _btree->get_node(_pointers[id].child, weak_from_this());
 }
@@ -355,7 +355,7 @@ int64_t node_impl::binary_search(const string& key, int64_t low, int64_t high) {
 
 seastar::future<> node_impl::split() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     // Prepare data
     auto midpoint = _header->_key_count / 2;
@@ -377,7 +377,7 @@ seastar::future<> node_impl::split() {
             break;
         }
         default: {
-            return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
+            return seastar::make_exception_future<>(spiderdb_error{error_code::page_type_incorrect});
         }
     }
     // Split
@@ -435,13 +435,13 @@ bool node_impl::need_split() noexcept {
 
 seastar::future<> node_impl::promote(string&& promoted_key, node_id left_child, node_id right_child) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     auto it = std::find_if(_pointers.begin(), _pointers.end(), [left_child](const auto& pointer) {
         return pointer.child == left_child;
     });
     if (it == _pointers.end()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::child_not_exists});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_child_not_exists});
     }
     auto id = it - _pointers.begin();
     _keys.insert(_keys.begin() + id, promoted_key);
@@ -457,7 +457,7 @@ seastar::future<> node_impl::promote(string&& promoted_key, node_id left_child, 
 
 seastar::future<> node_impl::merge() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     auto left_ptr = seastar::make_lw_shared<node>();
     auto right_ptr = seastar::make_lw_shared<node>();
@@ -516,7 +516,7 @@ seastar::future<> node_impl::merge() {
                         break;
                     }
                     default: {
-                        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_page_type});
+                        return seastar::make_exception_future<>(spiderdb_error{error_code::page_type_incorrect});
                     }
                 }
                 pointers.reserve(left_pointers.size() + right_pointers.size());
@@ -562,13 +562,13 @@ bool node_impl::need_merge() noexcept {
 
 seastar::future<string> node_impl::demote(node_id left_child, node_id right_child) {
     if (!is_valid()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::node_unavailable});
     }
     auto it = std::find_if(_pointers.begin(), _pointers.end(), [left_child](const auto& pointer) {
         return pointer.child == left_child;
     });
     if (it == _pointers.end()) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::child_not_exists});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::node_child_not_exists});
     }
     auto id = it - _pointers.begin();
     string demoted_key;
@@ -577,7 +577,7 @@ seastar::future<string> node_impl::demote(node_id left_child, node_id right_chil
         _keys.erase(_keys.begin() + id);
         _pointers.erase(_pointers.begin() + id + 1);
     } else {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::child_not_exists});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::node_child_not_exists});
     }
     update_metadata();
     _data_len -= demoted_key.length() + sizeof(uint32_t) + sizeof(pointer);
@@ -594,7 +594,7 @@ seastar::future<string> node_impl::demote(node_id left_child, node_id right_chil
 
 seastar::future<> node_impl::destroy() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     if (_page.get_id() == _btree->get_root().get_id()) {
         _page.set_type(node_type::leaf);
@@ -636,13 +636,13 @@ bool node_impl::need_destroy() noexcept {
 
 seastar::future<> node_impl::fire(node_id child) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     auto it = std::find_if(_pointers.begin(), _pointers.end(), [child](const auto& pointer) {
         return pointer.child == child;
     });
     if (it == _pointers.end()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::child_not_exists});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_child_not_exists});
     }
     auto id = it - _pointers.begin();
     if (id == 0) {
@@ -685,7 +685,7 @@ void node_impl::log() const {
                 break;
             }
             default: {
-                throw spiderdb_error{error_code::invalid_page_type};
+                throw spiderdb_error{error_code::page_type_incorrect};
             }
         }
         detail << "High key:\n";
@@ -696,7 +696,7 @@ void node_impl::log() const {
 
 seastar::future<node> node_impl::create_node(std::vector<string>&& keys, std::vector<pointer>&& pointers) {
     if (!is_valid()) {
-        return seastar::make_exception_future<node>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<node>(spiderdb_error{error_code::node_unavailable});
     }
     return _btree->create_node(_page.get_type()).then([keys{std::move(keys)}, pointers{std::move(pointers)}](auto child) mutable {
         child.update_data(std::move(keys), std::move(pointers));
@@ -708,7 +708,7 @@ seastar::future<node> node_impl::create_node(std::vector<string>&& keys, std::ve
 
 seastar::future<> node_impl::link_siblings(node left, node right) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return seastar::futurize_invoke([this, left, right] {
         if (left.get_next_node() != null_node) {
@@ -727,14 +727,14 @@ seastar::future<> node_impl::link_siblings(node left, node right) {
 
 seastar::future<> node_impl::cache(node node) {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _btree->cache_node(node);
 }
 
 seastar::future<> node_impl::become_parent() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     if (_page.get_type() != node_type::internal) {
         return seastar::now();
@@ -756,7 +756,7 @@ void node_impl::update_data(std::vector<string>&& keys, std::vector<pointer>&& p
 
 void node_impl::update_metadata() {
     if (_keys.size() > _btree->_config.max_keys_on_each_node) {
-        throw spiderdb_error{error_code::exceeded_max_key_count};
+        throw spiderdb_error{error_code::node_exceeded_max_key_count};
     }
     _header->_key_count = _keys.size();
     if (_keys.size() > 1) {
@@ -805,7 +805,7 @@ void node_impl::calculate_data_length() noexcept {
 
 seastar::future<> node_impl::clean() {
     if (!is_valid()) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     _page.set_type(node_type::unused);
     update_data({}, {});
@@ -862,70 +862,70 @@ bool node::operator!() const noexcept {
 
 node_id node::get_id() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_page.get_id();
 }
 
 seastar::weak_ptr<node_impl> node::get_pointer() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->weak_from_this();
 }
 
 page node::get_page() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_page;
 }
 
 const std::vector<string>& node::get_key_list() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_keys;
 }
 
 const std::vector<pointer>& node::get_pointer_list() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_pointers;
 }
 
 node_id node::get_parent_node() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_header->_parent;
 }
 
 node_id node::get_next_node() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_next;
 }
 
 node_id node::get_prev_node() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_prev;
 }
 
 const string& node::get_high_key() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->_high_key;
 }
 
 void node::set_next_node(node_id next) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->_next = next;
     _impl->_dirty = true;
@@ -933,7 +933,7 @@ void node::set_next_node(node_id next) const {
 
 void node::set_prev_node(node_id prev) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->_prev = prev;
     _impl->_dirty = true;
@@ -941,7 +941,7 @@ void node::set_prev_node(node_id prev) const {
 
 void node::set_high_key(string&& high_key) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->_high_key = std::move(high_key);
     _impl->_dirty = true;
@@ -949,154 +949,154 @@ void node::set_high_key(string&& high_key) const {
 
 void node::mark_dirty() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->_dirty = true;
 }
 
 seastar::future<> node::load() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->load();
 }
 
 seastar::future<> node::flush() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->flush();
 }
 
 seastar::future<> node::add(string&& key, data_pointer ptr) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->add(std::move(key), ptr);
 }
 
 seastar::future<data_pointer> node::remove(string&& key) const {
     if (!_impl) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->remove(std::move(key));
 }
 
 seastar::future<data_pointer> node::find(string&& key) const {
     if (!_impl) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->find(std::move(key));
 }
 
 void node::update_parent(seastar::weak_ptr<node_impl>&& parent) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->update_parent(std::move(parent));
 }
 
 int64_t node::binary_search(const string& key, int64_t low, int64_t high) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->binary_search(key, low, high);
 }
 
 seastar::future<> node::split() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->split();
 }
 
 bool node::need_split() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->need_split();
 }
 
 seastar::future<> node::promote(string&& key, node_id left_child, node_id right_child) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->promote(std::move(key), left_child, right_child);
 }
 
 seastar::future<> node::merge() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->merge();
 }
 
 bool node::need_merge() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->need_merge();
 }
 
 seastar::future<string> node::demote(node_id left_child, node_id right_child) const {
     if (!_impl) {
-        return seastar::make_exception_future<string>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<string>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->demote(left_child, right_child);
 }
 
 seastar::future<> node::destroy() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->destroy();
 }
 
 bool node::need_destroy() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->need_destroy();
 }
 
 seastar::future<> node::fire(node_id child) const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->fire(child);
 }
 
 seastar::future<> node::become_parent() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->become_parent();
 }
 
 void node::update_data(std::vector<string>&& keys, std::vector<pointer>&& pointers) const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->update_data(std::move(keys), std::move(pointers));
 }
 
 void node::update_metadata() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     return _impl->update_metadata();
 }
 
 seastar::future<> node::clean() const {
     if (!_impl) {
-        return seastar::make_exception_future<>(spiderdb_error{error_code::invalid_node});
+        return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
     return _impl->clean();
 }
 
 void node::log() const {
     if (!_impl) {
-        throw spiderdb_error{error_code::invalid_node};
+        throw spiderdb_error{error_code::node_unavailable};
     }
     _impl->log();
 }
