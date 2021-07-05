@@ -55,7 +55,7 @@ seastar::future<> page_impl::load(seastar::file file) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::page_unavailable});
     }
     return seastar::with_semaphore(_lock, 1, [this, file]() mutable {
-        const auto page_offset = _config.file_header_size + _id * _config.page_size;
+        const auto page_offset = _config.file_header_size + _id.get() * _config.page_size;
         return file.dma_read_exactly<char>(page_offset, _config.page_size).then([this](auto buffer) {
             memcpy(_data.str(), buffer.get(), buffer.size());
             return _header->write(std::move(buffer));
@@ -92,7 +92,7 @@ seastar::future<> page_impl::flush(seastar::file file) {
         seastar::temporary_buffer<char> buffer{_data.str(), _data.size()};
         memset(buffer.get_write(), 0, _config.page_header_size);
         return _header->read(buffer.share()).then([this, file, buffer{buffer.share()}]() mutable {
-            const auto page_offset = _config.file_header_size + _id * _config.page_size;
+            const auto page_offset = _config.file_header_size + _id.get() * _config.page_size;
             return file.dma_write(page_offset, buffer.get_write(), buffer.size()).then([buffer{buffer.share()}](auto) {});
         }).then([this] {
             if (_header->_type == page_type::internal || _header->_type == page_type::leaf) {

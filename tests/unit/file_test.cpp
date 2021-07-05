@@ -149,7 +149,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_a_regular_string, file_test_fixture) {
     return file.open().then([file] {
         spiderdb::string str = std::move(generate_data('0'));
         return file.write(str).then([](auto page_id) {
-            SPIDERDB_CHECK_MESSAGE(page_id == 0, "Wrong page");
+            SPIDERDB_CHECK_MESSAGE(page_id.get() == 0, "Wrong page");
         });
     }).finally([file] {
         return file.close().finally([file] {});
@@ -206,7 +206,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_consecutively, file_test_
         return seastar::do_for_each(it{0}, it{5}, [file, work_size](int i) {
             spiderdb::string str = std::move(generate_data(static_cast<char>('0' + i)));
             return file.write(str).then([i, work_size, str_len(str.length())](auto page_id) {
-                SPIDERDB_CHECK_MESSAGE(page_id == i * ((str_len - 1) / work_size + 1), "Wrong page");
+                SPIDERDB_CHECK_MESSAGE(page_id.get() == i * ((str_len - 1) / work_size + 1), "Wrong page");
                 SPIDERDB_TEST_MESSAGE("String {} written", i);
             });
         });
@@ -223,7 +223,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_multiple_strings_concurrently, file_test_f
         return seastar::parallel_for_each(it{0}, it{5}, [file, work_size](int i) {
             spiderdb::string str = std::move(generate_data(static_cast<char>('0' + i)));
             return file.write(str).then([i, work_size, str_len(str.length())](auto page_id) {
-                SPIDERDB_CHECK_MESSAGE(page_id < 5 * ((str_len - 1) / work_size + 1), "Wrong page");
+                SPIDERDB_CHECK_MESSAGE(page_id.get() < 5 * ((str_len - 1) / work_size + 1), "Wrong page");
                 SPIDERDB_TEST_MESSAGE("String {} written", i);
             });
         });
@@ -238,7 +238,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_after_reopening, file_test_fixture) {
     return file.open().then([file] {
         spiderdb::string str = std::move(generate_data(static_cast<char>('0')));
         return file.write(str).then([file](auto page_id) {
-            SPIDERDB_CHECK_MESSAGE(page_id == 0, "Wrong page");
+            SPIDERDB_CHECK_MESSAGE(page_id.get() == 0, "Wrong page");
         });
     }).finally([file] {
         return file.close().finally([file] {});
@@ -246,7 +246,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_write_after_reopening, file_test_fixture) {
         return file.open().then([file, work_size] {
             spiderdb::string str = std::move(generate_data(static_cast<char>('1')));
             return file.write(str).then([file, work_size, str_len{str.length()}](auto page_id) {
-                SPIDERDB_CHECK_MESSAGE(page_id == (str_len - 1) / work_size + 1, "Wrong page");
+                SPIDERDB_CHECK_MESSAGE(page_id.get() == (str_len - 1) / work_size + 1, "Wrong page");
             });
         }).finally([file] {
             return file.close().finally([file] {});

@@ -38,7 +38,7 @@ const size_t LONG_KEY_LEN = 1000;
 
 struct data_generator {
     using key_t = spiderdb::string;
-    using value_t = spiderdb::data_pointer;
+    using value_t = spiderdb::value_pointer;
     using item_t = std::pair<key_t, value_t>;
     using data_t = std::vector<item_t>;
 
@@ -50,7 +50,7 @@ public:
             spiderdb::string key{key_len - get_number_of_digits(i), '0'};
             key[0] = 'k';
             key += spiderdb::to_string(i);
-            data.push_back({std::move(key), static_cast<spiderdb::data_pointer>(i)});
+            data.push_back({std::move(key), spiderdb::value_pointer{static_cast<spiderdb::value_pointer::underlying_type>(i)}});
         }
     }
 
@@ -295,14 +295,14 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_records_with_invalid_key_length, btree_test_
     auto btree = fixture.btree;
     return btree.open().then([btree] {
         spiderdb::string key{LONG_KEY_LEN * 10, 0};
-        spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
+        spiderdb::value_pointer pointer{spiderdb::null_value_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
             SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_too_long);
         });
     }).then([btree] {
         spiderdb::string key;
-        spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
+        spiderdb::value_pointer pointer{spiderdb::null_value_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
             SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::key_too_short);
@@ -315,7 +315,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_records_with_invalid_key_length, btree_test_
 SPIDERDB_FIXTURE_TEST_CASE(test_add_before_opening, btree_test_fixture) {
     auto btree = fixture.btree;
     spiderdb::string key{LONG_KEY_LEN, 0};
-    spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
+    spiderdb::value_pointer pointer{spiderdb::null_value_pointer};
     return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
         SPIDERDB_REQUIRE(fut.failed());
         SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
@@ -328,7 +328,7 @@ SPIDERDB_FIXTURE_TEST_CASE(test_add_after_closing, btree_test_fixture) {
         return btree.close();
     }).then([btree] {
         spiderdb::string key{LONG_KEY_LEN, 0};
-        spiderdb::data_pointer pointer{spiderdb::null_data_pointer};
+        spiderdb::value_pointer pointer{spiderdb::null_value_pointer};
         return btree.add(std::move(key), pointer).then_wrapped([](auto fut) {
             SPIDERDB_REQUIRE(fut.failed());
             SPIDERDB_ASSERT_EQUAL(fut.get_exception(), spiderdb::error_code::closed_error);
@@ -374,8 +374,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_consecutively, 
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         });
@@ -393,8 +393,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_sequential_records_concurrently, b
             return btree.add(std::move(record.first), record.second);
         }).then([btree, generator] {
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         });
@@ -413,8 +413,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_consecutively, btre
         }).then([btree, generator] {
             generator->shuffle_data();
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         });
@@ -433,8 +433,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_random_records_concurrently, btree
         }).then([btree, generator] {
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         });
@@ -453,8 +453,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_multiple_records_with_long_key, btree_test_
         }).then([btree, generator] {
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         });
@@ -522,8 +522,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_find_after_reopening, btree_test_fixture) {
         return btree.open().then([btree, generator] {
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.find(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.find(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             });
         }).finally([btree, generator] {
@@ -547,8 +547,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_consecutively
             generator->clear_data();
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -575,8 +575,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_sequential_records_concurrently,
             generator->clear_data();
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -604,8 +604,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_consecutively, bt
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::do_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -633,8 +633,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_random_records_concurrently, btr
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -662,8 +662,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_multiple_records_with_long_key, btree_tes
             generator->generate_sequential_data(N_RECORDS / 10, 0, LONG_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -691,8 +691,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_records_multiple_times, btree_test_fixtur
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
@@ -783,8 +783,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_after_reopening, btree_test_fixture) {
             generator->generate_sequential_data(N_RECORDS / 10, 0, SHORT_KEY_LEN);
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -810,8 +810,8 @@ SPIDERDB_FIXTURE_TEST_CASE(test_remove_all_records, btree_test_fixture) {
         }).then([btree, generator] {
             generator->shuffle_data();
             return seastar::parallel_for_each(generator->get_data(), [btree](auto record) {
-                return btree.remove(std::move(record.first)).then([data_pointer{record.second}](auto res) {
-                    SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                return btree.remove(std::move(record.first)).then([value_pointer{record.second}](auto res) {
+                    SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                 });
             }).then([btree, generator] {
                 return seastar::do_for_each(generator->get_data(), [btree](auto record) {
@@ -846,15 +846,15 @@ SPIDERDB_FIXTURE_TEST_CASE(test_concurrent_requests, btree_test_fixture) {
                     return btree.add(record.first.clone(), record.second);
                 }
                 case 1: {
-                    return btree.find(record.first.clone()).then([data_pointer{record.second}](auto res) {
-                        SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                    return btree.find(record.first.clone()).then([value_pointer{record.second}](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                     }).handle_exception([](auto ex) {
                         SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::key_not_exists);
                     });
                 }
                 default: {
-                    return btree.remove(record.first.clone()).then([data_pointer{record.second}](auto res) {
-                        SPIDERDB_CHECK_MESSAGE(res == data_pointer, "Wrong result: Actual = {}, Expected = {}", res, data_pointer);
+                    return btree.remove(record.first.clone()).then([value_pointer{record.second}](auto res) {
+                        SPIDERDB_CHECK_MESSAGE(res == value_pointer, "Wrong result: Actual = {}, Expected = {}", res, value_pointer);
                     }).handle_exception([](auto ex) {
                         SPIDERDB_ASSERT_EQUAL(ex, spiderdb::error_code::key_not_exists);
                     });

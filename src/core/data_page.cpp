@@ -120,13 +120,13 @@ seastar::future<> data_page_impl::update(value_id id, string&& value) {
     if (!is_valid()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
-    if (id < 0 || id >= _values.size() || _values[id].empty()) {
+    if (id.get() < 0 || id.get() >= _values.size() || _values[id.get()].empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::value_not_exists});
     }
     return seastar::with_lock(_rwlock.for_write(), [this, id, value{std::move(value)}]() mutable {
-        auto old_value_len = _values[id].length();
+        auto old_value_len = _values[id.get()].length();
         auto new_value_len = value.length();
-        _values[id] = std::move(value);
+        _values[id.get()] = std::move(value);
         _data_len += new_value_len - old_value_len;
         _dirty = true;
         return seastar::now();
@@ -139,12 +139,12 @@ seastar::future<> data_page_impl::remove(value_id id) {
     if (!is_valid()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::data_page_unavailable});
     }
-    if (id < 0 || id >= _values.size() || _values[id].empty()) {
+    if (id.get() < 0 || id.get() >= _values.size() || _values[id.get()].empty()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::value_not_exists});
     }
     return seastar::with_lock(_rwlock.for_write(), [this, id] {
-        auto value_len = _values[id].length();
-        _values[id] = string{};
+        auto value_len = _values[id.get()].length();
+        _values[id.get()] = string{};
         _data_len -= value_len;
         --_header->_value_count;
         _dirty = true;
@@ -161,11 +161,11 @@ seastar::future<string> data_page_impl::find(value_id id) {
     if (!is_valid()) {
         return seastar::make_exception_future<string>(spiderdb_error{error_code::data_page_unavailable});
     }
-    if (id < 0 || id >= _values.size() || _values[id].empty()) {
+    if (id.get() < 0 || id.get() >= _values.size() || _values[id.get()].empty()) {
         return seastar::make_exception_future<string>(spiderdb_error{error_code::value_not_exists});
     }
     return seastar::with_lock(_rwlock.for_read(), [this, id] {
-        return seastar::make_ready_future<string>(_values[id]);
+        return seastar::make_ready_future<string>(_values[id.get()]);
     }).then([this](auto result) {
         return cache(shared_from_this()).then([result] {
             return seastar::make_ready_future<string>(result);

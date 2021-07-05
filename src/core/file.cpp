@@ -252,7 +252,7 @@ seastar::future<page> file_impl::get_free_page() {
         if (_file_header->_first_free_page != null_page) {
             return get_or_create_page(_file_header->_first_free_page);
         } else {
-            return get_or_create_page(_file_header->_page_count++);
+            return get_or_create_page(page_id{static_cast<page_id::underlying_type>(_file_header->_page_count++)});
         }
     }).then([this](auto free_page) {
         _file_header->_first_free_page = free_page.get_next_page();
@@ -267,7 +267,7 @@ seastar::future<page> file_impl::get_free_page() {
 }
 
 seastar::future<page> file_impl::get_or_create_page(page_id id) {
-    if (id < 0 || id > _file_header->_page_count) {
+    if (id.get() < 0 || id.get() > _file_header->_page_count) {
         return seastar::make_exception_future<page>(spiderdb_error{error_code::page_unavailable});
     }
     auto page_it = _pages.find(id);

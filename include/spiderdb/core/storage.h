@@ -66,13 +66,13 @@ private:
     seastar::future<data_page> create_data_page();
     seastar::future<data_page> get_data_page(page_id id);
     seastar::future<> cache_data_page(data_page data_page);
-    seastar::future<data_pointer> add_value(string&& value);
-    seastar::future<> update_value(data_pointer ptr, string&& value);
-    seastar::future<> remove_value(data_pointer ptr);
-    seastar::future<string> find_value(data_pointer ptr);
-    data_pointer generate_data_pointer(page_id pid, value_id vid);
-    page_id get_page_id(data_pointer ptr);
-    value_id get_value_id(data_pointer ptr);
+    seastar::future<value_pointer> add_value(string&& value);
+    seastar::future<> update_value(value_pointer ptr, string&& value);
+    seastar::future<> remove_value(value_pointer ptr);
+    seastar::future<string> find_value(value_pointer ptr);
+    value_pointer generate_data_pointer(page_id pid, value_id vid);
+    page_id get_page_id(value_pointer ptr);
+    value_id get_value_id(value_pointer ptr);
 
 private:
     seastar::shared_ptr<storage_header> _storage_header = nullptr;

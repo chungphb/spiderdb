@@ -66,13 +66,13 @@ seastar::future<> available_page_list::read(seastar::temporary_buffer<char> buff
     buffer.trim_front(sizeof(size));
     size = std::min(size, _capacity);
     for (size_t i = 0; i < size; ++i) {
-        page_id page;
+        page_id::underlying_type page;
         memcpy(&page, buffer.begin(), sizeof(page));
         buffer.trim_front(sizeof(page));
         uint32_t available_space;
         memcpy(&available_space, buffer.begin(), sizeof(available_space));
         buffer.trim_front(sizeof(available_space));
-        add(page, available_space);
+        add(page_id{page}, available_space);
     }
     return seastar::now();
 }
@@ -237,7 +237,7 @@ seastar::future<> storage_impl::cache_data_page(data_page data_page) {
     return _cache->put(data_page.get_id(), data_page);
 }
 
-seastar::future<data_pointer> storage_impl::add_value(string&& value) {
+seastar::future<value_pointer> storage_impl::add_value(string&& value) {
     auto required_space = sizeof(uint32_t) + value.length();
     return seastar::with_semaphore(_create_data_page_lock, 1, [this, required_space] {
         auto available_page = _storage_header->_available_page_list->find(required_space);
@@ -257,41 +257,41 @@ seastar::future<data_pointer> storage_impl::add_value(string&& value) {
                 _storage_header->_available_page_list->add(data_page.get_id(), available_space);
             }
             // Generate data pointer
-            return seastar::make_ready_future<data_pointer>(generate_data_pointer(data_page.get_id(), vid));
+            return seastar::make_ready_future<value_pointer>(generate_data_pointer(data_page.get_id(), vid));
         });
     });
 }
 
-seastar::future<> storage_impl::update_value(data_pointer ptr, string&& value) {
+seastar::future<> storage_impl::update_value(value_pointer ptr, string&& value) {
     return get_data_page(get_page_id(ptr)).then([this, ptr, value{std::move(value)}](auto data_page) mutable {
         return data_page.update(get_value_id(ptr), std::move(value)).finally([data_page] {});
     });
 }
 
-seastar::future<> storage_impl::remove_value(data_pointer ptr) {
+seastar::future<> storage_impl::remove_value(value_pointer ptr) {
     return get_data_page(get_page_id(ptr)).then([this, ptr](auto data_page) mutable {
         return data_page.remove(get_value_id(ptr)).finally([data_page] {});
     });
 }
 
-seastar::future<string> storage_impl::find_value(data_pointer ptr) {
+seastar::future<string> storage_impl::find_value(value_pointer ptr) {
     return get_data_page(get_page_id(ptr)).then([this, ptr](auto data_page) mutable {
         return data_page.find(get_value_id(ptr)).finally([data_page] {});
     });
 }
 
-data_pointer storage_impl::generate_data_pointer(page_id pid, value_id vid) {
+value_pointer storage_impl::generate_data_pointer(page_id pid, value_id vid) {
     assert(pid >= 0 && pid <= 0x7fffffffffff);
     assert(vid >= 0 && vid <= 0x7fff);
-    return ((pid & 0xffffffffffff) << 16) | vid;
+    return value_pointer{((pid.get() & 0xffffffffffff) << 16) | vid.get()};
 }
 
-page_id storage_impl::get_page_id(data_pointer ptr) {
-    return ptr >> 16;
+page_id storage_impl::get_page_id(value_pointer ptr) {
+    return page_id{static_cast<page_id::underlying_type>(ptr.get() >> 16)};
 }
 
-value_id storage_impl::get_value_id(data_pointer ptr) {
-    return static_cast<value_id>(ptr & 0xffff);
+value_id storage_impl::get_value_id(value_pointer ptr) {
+    return value_id{static_cast<value_id::underlying_type>(ptr.get() & 0xffff)};
 }
 
 storage::storage(std::string name, spiderdb_config config) {

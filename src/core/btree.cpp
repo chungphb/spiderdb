@@ -42,7 +42,7 @@ seastar::future<> btree_impl::open() {
             return evicted_node.flush().finally([evicted_node] {});
         };
         _cache = std::make_unique<cache<node_id, node>>(_config.n_cached_nodes, std::move(evictor));
-        return get_or_create_page(_btree_header->_root).then([this](auto root) {
+        return get_or_create_page(page_id{static_cast<page_id::underlying_type>(_btree_header->_root.get())}).then([this](auto root) {
             _btree_header->_page_count++;
             _btree_header->_dirty = true;
             _root = node{root, get_pointer()};
@@ -93,15 +93,15 @@ seastar::future<> btree_impl::close() {
     });
 }
 
-seastar::future<> btree_impl::add(string&& key, data_pointer ptr) {
+seastar::future<> btree_impl::add(string&& key, value_pointer ptr) {
     return _root.add(std::move(key), ptr);
 }
 
-seastar::future<data_pointer> btree_impl::remove(string&& key) {
+seastar::future<value_pointer> btree_impl::remove(string&& key) {
     return _root.remove(std::move(key));
 }
 
-seastar::future<data_pointer> btree_impl::find(string&& key) {
+seastar::future<value_pointer> btree_impl::find(string&& key) {
     return _root.find(std::move(key));
 }
 
@@ -133,7 +133,7 @@ seastar::future<node> btree_impl::get_node(node_id id, seastar::weak_ptr<node_im
                     _nodes.erase(node_it);
                 }
                 // Otherwise
-                return get_or_create_page(id).then([this](auto page) {
+                return get_or_create_page(page_id{static_cast<page_id::underlying_type>(id.get())}).then([this](auto page) {
                     auto loading_node = node{page, get_pointer()};
                     return loading_node.load().then([this, loading_node] {
                         _nodes.emplace(loading_node.get_id(), loading_node.get_pointer());
@@ -218,7 +218,7 @@ seastar::future<> btree::close() const {
     return _impl->close();
 }
 
-seastar::future<> btree::add(string&& key, data_pointer ptr) const {
+seastar::future<> btree::add(string&& key, value_pointer ptr) const {
     if (!_impl || !_impl->is_open()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::closed_error});
     }
@@ -231,22 +231,22 @@ seastar::future<> btree::add(string&& key, data_pointer ptr) const {
     return _impl->add(std::move(key), ptr);
 }
 
-seastar::future<data_pointer> btree::remove(string&& key) const {
+seastar::future<value_pointer> btree::remove(string&& key) const {
     if (!_impl || !_impl->is_open()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::closed_error});
+        return seastar::make_exception_future<value_pointer>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::key_too_short});
+        return seastar::make_exception_future<value_pointer>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->remove(std::move(key));
 }
 
-seastar::future<data_pointer> btree::find(string&& key) const {
+seastar::future<value_pointer> btree::find(string&& key) const {
     if (!_impl || !_impl->is_open()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::closed_error});
+        return seastar::make_exception_future<value_pointer>(spiderdb_error{error_code::closed_error});
     }
     if (key.empty()) {
-        return seastar::make_exception_future<data_pointer>(spiderdb_error{error_code::key_too_short});
+        return seastar::make_exception_future<value_pointer>(spiderdb_error{error_code::key_too_short});
     }
     return _impl->find(std::move(key));
 }

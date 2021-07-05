@@ -36,9 +36,9 @@ public:
     virtual seastar::future<> open() override;
     virtual seastar::future<> flush() override;
     virtual seastar::future<> close() override;
-    seastar::future<> add(string&& key, data_pointer ptr);
-    seastar::future<data_pointer> remove(string&& key);
-    seastar::future<data_pointer> find(string&& key);
+    seastar::future<> add(string&& key, value_pointer ptr);
+    seastar::future<value_pointer> remove(string&& key);
+    seastar::future<value_pointer> find(string&& key);
     seastar::future<node> create_node(node_type type, seastar::weak_ptr<node_impl>&& parent = nullptr);
     seastar::future<node> get_node(node_id id, seastar::weak_ptr<node_impl>&& parent = nullptr);
     seastar::future<> cache_node(node node);
@@ -75,9 +75,9 @@ public:
     const spiderdb_config& get_config() const;
     seastar::future<> open() const;
     seastar::future<> close() const;
-    seastar::future<> add(string&& key, data_pointer ptr) const;
-    seastar::future<data_pointer> remove(string&& key) const;
-    seastar::future<data_pointer> find(string&& key) const;
+    seastar::future<> add(string&& key, value_pointer ptr) const;
+    seastar::future<value_pointer> remove(string&& key) const;
+    seastar::future<value_pointer> find(string&& key) const;
     void log() const;
 
 private:
