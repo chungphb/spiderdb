@@ -104,7 +104,7 @@ using value_pointer = internal::strong_type<
 >;
 using value_id = internal::strong_type<
         int16_t,
-        struct value_pointer_parameter
+        struct value_id_parameter
 >;
 
 union node_item_pointer {

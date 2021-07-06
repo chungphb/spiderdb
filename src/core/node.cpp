@@ -386,23 +386,24 @@ seastar::future<> node_impl::split() {
         }
     }
     // Split
-    if (_id.get() == _btree->get_root().get_id().get()) {
-        return seastar::when_all_succeed(create_node(std::move(left_keys), std::move(left_pointers)),
-                                         create_node(std::move(right_keys), std::move(right_pointers)))
-                .then([this, midpoint](auto children) {
-                    node left, right;
-                    std::tie(left, right) = std::move(children);
-                    left.set_high_key(_keys[midpoint].clone());
-                    right.set_high_key(_high_key.clone());
-                    return link_siblings(left, right).then([this, midpoint, left, right] {
-                        SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {:0>12} + {:0>12}", _id, left.get_id(), right.get_id());
-                        _page.set_type(node_type::internal);
-                        std::vector<string> keys{_keys[midpoint].clone()};
-                        std::vector<node_item_pointer> pointers{node_item_pointer{.child = left.get_id()}, node_item_pointer{.child = right.get_id()}};
-                        update_data(std::move(keys), std::move(pointers));
-                        return seastar::when_all_succeed(cache(shared_from_this()), cache(left), cache(right)).discard_result();
-                    });
-                });
+    if (_id == _btree->get_root().get_id()) {
+        return seastar::when_all_succeed(
+                create_node(std::move(left_keys), std::move(left_pointers)),
+                create_node(std::move(right_keys), std::move(right_pointers))
+        ).then([this, midpoint](auto children) {
+            node left, right;
+            std::tie(left, right) = std::move(children);
+            left.set_high_key(_keys[midpoint].clone());
+            right.set_high_key(_high_key.clone());
+            return link_siblings(left, right).then([this, midpoint, left, right] {
+                SPIDERDB_LOGGER_DEBUG("Node {:0>12} - Split to {:0>12} + {:0>12}", _id, left.get_id(), right.get_id());
+                _page.set_type(node_type::internal);
+                std::vector<string> keys{_keys[midpoint].clone()};
+                std::vector<node_item_pointer> pointers{node_item_pointer{.child = left.get_id()}, node_item_pointer{.child = right.get_id()}};
+                update_data(std::move(keys), std::move(pointers));
+                return seastar::when_all_succeed(cache(shared_from_this()), cache(left), cache(right)).discard_result();
+            });
+        });
     }
     auto separator = _keys[midpoint].clone();
     update_data(std::move(left_keys), std::move(left_pointers));
@@ -601,7 +602,7 @@ seastar::future<> node_impl::destroy() {
     if (!is_valid()) {
         return seastar::make_exception_future<>(spiderdb_error{error_code::node_unavailable});
     }
-    if (_id.get() == _btree->get_root().get_id().get()) {
+    if (_id == _btree->get_root().get_id()) {
         _page.set_type(node_type::leaf);
         return seastar::now();
     }

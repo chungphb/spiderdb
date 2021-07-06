@@ -16,13 +16,18 @@ const char* spiderdb_current_test_suite = SPIDERDB_MASTER_TEST_SUITE;
 }
 #endif
 
+#ifndef SPIDERDB_CONCAT
+#define SPIDERDB_CONCAT(x, y) x ## y
+#define SPIDERDB_CONCAT2(x, y) SPIDERDB_CONCAT(x, y)
+#endif
+
 #define SPIDERDB_TEST_SUITE(test_suite_name) \
 namespace test_suite_name { \
-namespace { \
+namespace SPIDERDB_CONCAT2(internal, __LINE__) { \
 const char* spiderdb_current_test_suite = #test_suite_name; \
-}
 
 #define SPIDERDB_TEST_SUITE_END() \
+} \
 }
 
 #define SPIDERDB_TEST_CASE(test_case_name) \
